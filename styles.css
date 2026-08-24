@@ -504,6 +504,12 @@ input[type="text"]:focus, input[type="password"]:focus {
   justify-content: space-between;
 }
 
+.explorer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .explorer-title h2 {
   font-size: 16px;
   font-weight: 600;

@@ -232,6 +232,105 @@ ipcMain.handle('r2:deleteObject', async (event, { key, isFolder }) => {
   }
 });
 
+ipcMain.handle('r2:deleteBatch', async (event, items) => {
+  try {
+    if (!fs.existsSync(settingsPath)) {
+      throw new Error('Налаштування Cloudflare R2 відсутні.');
+    }
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+
+    const s3Client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${settings.accountId.trim()}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: settings.accessKeyId.trim(),
+        secretAccessKey: settings.secretAccessKey.trim()
+      }
+    });
+
+    const bucket = settings.bucketName.trim();
+
+    for (const item of items) {
+      if (item.isFolder) {
+        const folderPrefix = item.key.endsWith('/') ? item.key : `${item.key}/`;
+        const listCommand = new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: folderPrefix
+        });
+        const listed = await s3Client.send(listCommand);
+
+        if (listed.Contents && listed.Contents.length > 0) {
+          const deleteParams = {
+            Bucket: bucket,
+            Delete: {
+              Objects: listed.Contents.map(obj => ({ Key: obj.Key }))
+            }
+          };
+          await s3Client.send(new DeleteObjectsCommand(deleteParams));
+        }
+      } else {
+        await s3Client.send(new DeleteObjectCommand({
+          Bucket: bucket,
+          Key: item.key
+        }));
+      }
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('Error batch deleting R2 objects:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('r2:uploadAnyFile', async (event, prefix = '') => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      title: 'Завантажити файл у Cloudflare R2'
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+
+    const filePath = result.filePaths[0];
+    const fileName = path.basename(filePath);
+    const normalizedPrefix = prefix ? (prefix.endsWith('/') ? prefix : `${prefix}/`) : '';
+    const s3Key = `${normalizedPrefix}${fileName}`;
+
+    if (!fs.existsSync(settingsPath)) {
+      throw new Error('Налаштування Cloudflare R2 відсутні.');
+    }
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+
+    const s3Client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${settings.accountId.trim()}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: settings.accessKeyId.trim(),
+        secretAccessKey: settings.secretAccessKey.trim()
+      }
+    });
+
+    let contentType = mime.lookup(filePath) || 'application/octet-stream';
+    const fileBuffer = fs.readFileSync(filePath);
+
+    await s3Client.send(new PutObjectCommand({
+      Bucket: settings.bucketName.trim(),
+      Key: s3Key,
+      Body: fileBuffer,
+      ContentType: contentType
+    }));
+
+    return { success: true, fileName };
+  } catch (err) {
+    console.error('Error uploading file to R2:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+
 // --- Video Probing Handlers ---
 ipcMain.handle('dialog:selectFile', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {

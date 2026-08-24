@@ -8,10 +8,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const viewSettings = document.getElementById('view-settings');
 
   // Explorer elements
+  const explorerUploadBtn = document.getElementById('explorer-upload-btn');
+  const explorerDeleteSelectedBtn = document.getElementById('explorer-delete-selected-btn');
   const explorerRefreshBtn = document.getElementById('explorer-refresh-btn');
   const explorerBreadcrumbs = document.getElementById('explorer-breadcrumbs');
   const explorerListBody = document.getElementById('explorer-list-body');
   const explorerStatus = document.getElementById('explorer-status');
+  const selectAllExplorer = document.getElementById('select-all-explorer');
 
   let currentExplorerPrefix = '';
 
@@ -39,6 +42,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentExplorerPrefix = prefix;
     renderBreadcrumbs(prefix);
 
+    if (selectAllExplorer) selectAllExplorer.checked = false;
+    if (explorerDeleteSelectedBtn) explorerDeleteSelectedBtn.disabled = true;
+
     explorerStatus.className = 'explorer-status info';
     explorerStatus.textContent = '⏳ Завантаження вмісту R2 бакета...';
     explorerStatus.classList.remove('hidden');
@@ -56,6 +62,56 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   explorerRefreshBtn.addEventListener('click', () => loadExplorer(currentExplorerPrefix));
+
+  if (explorerUploadBtn) {
+    explorerUploadBtn.addEventListener('click', async () => {
+      const res = await window.api.uploadAnyR2File(currentExplorerPrefix);
+      if (res.success) {
+        loadExplorer(currentExplorerPrefix);
+      } else if (res.error) {
+        alert(`Помилка завантаження файла: ${res.error}`);
+      }
+    });
+  }
+
+  if (selectAllExplorer) {
+    selectAllExplorer.addEventListener('change', () => {
+      const rowCheckboxes = explorerListBody.querySelectorAll('.item-checkbox');
+      rowCheckboxes.forEach(cb => cb.checked = selectAllExplorer.checked);
+      updateBatchDeleteButtonState();
+    });
+  }
+
+  function updateBatchDeleteButtonState() {
+    const checkedCount = explorerListBody.querySelectorAll('.item-checkbox:checked').length;
+    if (explorerDeleteSelectedBtn) {
+      explorerDeleteSelectedBtn.disabled = checkedCount === 0;
+      explorerDeleteSelectedBtn.textContent = checkedCount > 0 ? `🗑️ Видалити обрані (${checkedCount})` : '🗑️ Видалити обрані';
+    }
+  }
+
+  if (explorerDeleteSelectedBtn) {
+    explorerDeleteSelectedBtn.addEventListener('click', async () => {
+      const checkedBoxes = Array.from(explorerListBody.querySelectorAll('.item-checkbox:checked'));
+      if (checkedBoxes.length === 0) return;
+
+      const items = checkedBoxes.map(cb => ({
+        key: cb.getAttribute('data-key'),
+        isFolder: cb.getAttribute('data-is-folder') === 'true'
+      }));
+
+      if (confirm(`Ви дійсно бажаєте видалити ${items.length} обраних елементів?`)) {
+        explorerDeleteSelectedBtn.disabled = true;
+        const res = await window.api.deleteBatchR2Objects(items);
+        if (res.success) {
+          loadExplorer(currentExplorerPrefix);
+        } else {
+          alert(`Помилка групового видалення: ${res.error}`);
+          explorerDeleteSelectedBtn.disabled = false;
+        }
+      }
+    });
+  }
 
   function renderBreadcrumbs(prefix) {
     const parts = prefix.split('/').filter(Boolean);
@@ -86,6 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const parentPrefix = parts.length > 0 ? parts.join('/') + '/' : '';
       html += `
         <tr class="explorer-row folder-row" data-prefix="${parentPrefix}">
+          <td></td>
           <td>📁 <strong>.. (на рівень вище)</strong></td>
           <td>Папка</td>
           <td>-</td>
@@ -98,7 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (folders.length === 0 && files.length === 0) {
       html += `
         <tr>
-          <td colspan="5" class="text-center text-muted">Папка порожня або вміст відсутній</td>
+          <td colspan="6" class="text-center text-muted">Папка порожня або вміст відсутній</td>
         </tr>
       `;
     }
@@ -107,6 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     folders.forEach(f => {
       html += `
         <tr class="explorer-row folder-row" data-prefix="${f.prefix}">
+          <td style="text-align: center;"><input type="checkbox" class="item-checkbox" data-key="${escapeHtml(f.prefix)}" data-is-folder="true" /></td>
           <td>📁 <strong>${escapeHtml(f.name)}</strong></td>
           <td>Папка HLS</td>
           <td>-</td>
@@ -126,6 +184,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       html += `
         <tr class="explorer-row file-row">
+          <td style="text-align: center;"><input type="checkbox" class="item-checkbox" data-key="${escapeHtml(file.key)}" data-is-folder="false" /></td>
           <td>${icon} ${escapeHtml(file.name)}</td>
           <td>${file.isM3u8 ? '<strong>M3U8 Playlist</strong>' : 'Файл'}</td>
           <td>${formattedSize}</td>
@@ -140,10 +199,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     explorerListBody.innerHTML = html;
 
+    // Attach checkbox events
+    explorerListBody.querySelectorAll('.item-checkbox').forEach(cb => {
+      cb.addEventListener('change', updateBatchDeleteButtonState);
+    });
+
     // Attach row events
     explorerListBody.querySelectorAll('.folder-row').forEach(row => {
       row.addEventListener('click', (e) => {
-        if (e.target.closest('button')) return;
+        if (e.target.closest('button') || e.target.closest('input')) return;
         const targetPrefix = row.getAttribute('data-prefix');
         loadExplorer(targetPrefix);
       });
@@ -198,6 +262,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     });
   }
+
 
   function escapeHtml(str) {
     return str.replace(/[&<>"']/g, function(m) {

@@ -148,7 +148,11 @@
               <span class="crumb" data-prefix="">root</span>
             </div>
           </div>
-          <button id="explorer-refresh-btn" class="btn-secondary">🔄 Оновити</button>
+          <div class="explorer-actions">
+            <button id="explorer-upload-btn" class="btn-primary btn-sm">📤 Завантажити файл</button>
+            <button id="explorer-delete-selected-btn" class="btn-danger btn-sm" disabled>🗑️ Видалити обрані</button>
+            <button id="explorer-refresh-btn" class="btn-secondary btn-sm">🔄 Оновити</button>
+          </div>
         </div>
 
         <div id="explorer-status" class="explorer-status hidden"></div>
@@ -157,6 +161,7 @@
           <table class="explorer-table">
             <thead>
               <tr>
+                <th style="width: 36px; text-align: center;"><input type="checkbox" id="select-all-explorer" /></th>
                 <th>Назва</th>
                 <th>Тип</th>
                 <th>Розмір</th>
