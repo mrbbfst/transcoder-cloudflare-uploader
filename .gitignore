@@ -1,0 +1,10 @@
+# Dependencies
+node_modules/
+
+# Build releases
+dist/
+npm-cache/
+
+# System & temporary files
+.DS_Store
+*.log
