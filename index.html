@@ -98,29 +98,40 @@
 
       <!-- Status & Progress Section -->
       <div id="progress-card" class="card hidden">
-        <div class="status-header">
-          <span class="status-spinner" id="status-spinner"></span>
-          <span class="status-text" id="status-text">Підготовка...</span>
-          <button id="stop-btn" class="btn-xs btn-danger stop-proc-btn">🛑 Зупинити обробку</button>
-        </div>
+        <div class="progress-grid">
+          <div class="progress-col-main">
+            <div class="status-header">
+              <span class="status-spinner" id="status-spinner"></span>
+              <span class="status-text" id="status-text">Підготовка...</span>
+              <button id="stop-btn" class="btn-xs btn-danger stop-proc-btn">🛑 Зупинити обробку</button>
+            </div>
 
-        <div class="progress-block">
-          <div class="progress-label">
-            <span>1. Транскодування відео (FFmpeg)</span>
-            <span id="transcode-percent">0%</span>
-          </div>
-          <div class="progress-bar-bg">
-            <div class="progress-bar-fill" id="transcode-bar" style="width: 0%"></div>
-          </div>
-        </div>
+            <div class="progress-block">
+              <div class="progress-label">
+                <span>1. Транскодування відео (FFmpeg)</span>
+                <span id="transcode-percent">0%</span>
+              </div>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="transcode-bar" style="width: 0%"></div>
+              </div>
+            </div>
 
-        <div class="progress-block">
-          <div class="progress-label">
-            <span>2. Завантаження файлів у Cloudflare R2</span>
-            <span id="upload-percent">0%</span>
+            <div class="progress-block">
+              <div class="progress-label">
+                <span>2. Завантаження файлів у Cloudflare R2</span>
+                <span id="upload-percent">0%</span>
+              </div>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill green" id="upload-bar" style="width: 0%"></div>
+              </div>
+            </div>
           </div>
-          <div class="progress-bar-bg">
-            <div class="progress-bar-fill green" id="upload-bar" style="width: 0%"></div>
+
+          <div class="progress-col-sidebar">
+            <div class="file-queue-header">📁 Файли та статуси:</div>
+            <div id="file-queue-list" class="file-queue-list">
+              <div class="queue-empty text-muted">Очікування запуску...</div>
+            </div>
           </div>
         </div>
       </div>

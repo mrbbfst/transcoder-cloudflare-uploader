@@ -574,6 +574,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     startBtn.disabled = !(selectedFile && hasQualities);
   }
 
+  const fileQueueList = document.getElementById('file-queue-list');
+
+  function initFileQueue(qualities) {
+    if (!fileQueueList) return;
+    fileQueueList.innerHTML = '';
+
+    qualities.forEach(q => {
+      appendQueueItem(q, `${q}.m3u8`, 'Очікує', 'tag-pending');
+    });
+
+    appendQueueItem('master', 'master.m3u8', 'Очікує', 'tag-pending');
+  }
+
+  function appendQueueItem(id, fileName, tagText, tagClass) {
+    const div = document.createElement('div');
+    div.className = 'queue-item';
+    div.id = `queue-item-${id}`;
+    div.innerHTML = `
+      <span class="queue-filename" title="${escapeHtml(fileName)}">🎬 ${escapeHtml(fileName)}</span>
+      <span class="queue-tag ${tagClass}">${escapeHtml(tagText)}</span>
+    `;
+    fileQueueList.appendChild(div);
+  }
+
+  function updateQueueItemStatus(id, tagText, tagClass) {
+    const item = document.getElementById(`queue-item-${id}`);
+    if (item) {
+      const tagSpan = item.querySelector('.queue-tag');
+      if (tagSpan) {
+        tagSpan.className = `queue-tag ${tagClass}`;
+        tagSpan.textContent = tagText;
+      }
+    }
+  }
+
   // --- Start Processing ---
   startBtn.addEventListener('click', async () => {
     if (!selectedFile || isProcessingActive) return;
@@ -598,6 +633,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // UI Reset & Lock
     setProcessingState(true);
+    initFileQueue(selectedQualities);
+
     progressCard.classList.remove('hidden');
     resultCard.classList.add('hidden');
     transcodeBar.style.width = '0%';
@@ -625,6 +662,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     transcodePercent.textContent = `${percent}%`;
     if (currentQuality) {
       statusText.textContent = `Транскодування [${qualityIndex}/${totalQualities}]: ${currentQuality} (${percent}%)`;
+      updateQueueItemStatus(currentQuality, '⚙️ Кодується', 'tag-transcoding');
     }
   });
 
@@ -633,6 +671,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     uploadPercent.textContent = `Паралельно завантажено: ${uploadedFiles} файлів`;
     if (stepDescription) {
       statusText.textContent = `${stepDescription} (${uploadedFiles} файлів у CDN)...`;
+      if (stepDescription.includes('1080p')) updateQueueItemStatus('1080p', '✅ Завантажено', 'tag-uploaded');
+      if (stepDescription.includes('720p')) updateQueueItemStatus('720p', '✅ Завантажено', 'tag-uploaded');
+      if (stepDescription.includes('480p')) updateQueueItemStatus('480p', '✅ Завантажено', 'tag-uploaded');
+      if (stepDescription.includes('360p')) updateQueueItemStatus('360p', '✅ Завантажено', 'tag-uploaded');
     }
   });
 
@@ -643,6 +685,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     transcodePercent.textContent = '100%';
     uploadBar.style.width = '100%';
     uploadPercent.textContent = '100%';
+
+    if (fileQueueList) {
+      fileQueueList.querySelectorAll('.queue-tag').forEach(tag => {
+        tag.className = 'queue-tag tag-uploaded';
+        tag.textContent = '✅ Завантажено';
+      });
+    }
 
     masterUrlInput.value = masterUrl;
     resultCard.classList.remove('hidden');
