@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   stopProcessing: () => ipcRenderer.send('process:stop'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  getFFmpegStatus: () => ipcRenderer.invoke('ffmpeg:getStatus'),
   testR2Settings: (settings) => ipcRenderer.invoke('settings:testR2', settings),
   listR2Objects: (prefix) => ipcRenderer.invoke('r2:listObjects', prefix),
   deleteR2Object: (data) => ipcRenderer.invoke('r2:deleteObject', data),

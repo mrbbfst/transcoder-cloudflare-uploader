@@ -331,6 +331,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let selectedFile = null;
 
+  const ffmpegStatusBox = document.getElementById('ffmpeg-status-box');
+
   // --- Load Initial Settings ---
   async function loadSettings() {
     const settings = await window.api.getSettings();
@@ -340,6 +342,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       r2SecretKey.value = settings.secretAccessKey || '';
       r2BucketName.value = settings.bucketName || '';
       r2PublicDomain.value = settings.publicDomain || '';
+    }
+
+    if (ffmpegStatusBox) {
+      const status = await window.api.getFFmpegStatus();
+      if (status && status.isAvailable) {
+        const typeText = status.isSystem ? 'Системний (Homebrew / System PATH)' : 'Автономний (вбудований бінарник)';
+        ffmpegStatusBox.className = 'test-msg success margin-top';
+        ffmpegStatusBox.textContent = `✅ FFmpeg підключено (${typeText}): ${status.ffmpegPath}`;
+      } else {
+        ffmpegStatusBox.className = 'test-msg error margin-top';
+        ffmpegStatusBox.textContent = '❌ Бінарник FFmpeg не знайдено.';
+      }
     }
   }
   loadSettings();

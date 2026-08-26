@@ -8,31 +8,68 @@ const ffprobeStatic = require('ffprobe-static');
 const { S3Client, PutObjectCommand, HeadBucketCommand, ListObjectsV2Command, DeleteObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 const mime = require('mime-types');
 
-// Configure static FFmpeg and FFprobe paths (handling Electron ASAR unpacking)
+const { execSync } = require('child_process');
+
+// Helper: Check system executable or fallback to static binary
+function findSystemExecutable(cmdName) {
+  try {
+    const whichCmd = process.platform === 'win32' ? `where ${cmdName}` : `which ${cmdName}`;
+    const out = execSync(whichCmd, { encoding: 'utf-8' }).trim().split('\r\n')[0].split('\n')[0];
+    if (out && fs.existsSync(out)) return out;
+  } catch (e) {}
+
+  const commonPaths = [
+    `/opt/homebrew/bin/${cmdName}`,
+    `/usr/local/bin/${cmdName}`,
+    `/usr/bin/${cmdName}`
+  ];
+
+  for (const p of commonPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  return null;
+}
+
 const fixAsarPath = (p) => p ? p.replace('app.asar', 'app.asar.unpacked') : p;
 
-let ffmpegPath = fixAsarPath(ffmpegStatic);
-let ffprobePath = ffprobeStatic ? fixAsarPath(ffprobeStatic.path) : null;
+function configureFFmpegPaths() {
+  let sysFfmpeg = findSystemExecutable('ffmpeg');
+  let sysFfprobe = findSystemExecutable('ffprobe');
 
-// Ensure executable permissions on macOS / Linux
-if (ffmpegPath && fs.existsSync(ffmpegPath)) {
-  try { fs.chmodSync(ffmpegPath, 0o755); } catch (e) {}
-} else {
-  ffmpegPath = 'ffmpeg';
+  let finalFfmpeg = sysFfmpeg;
+  let finalFfprobe = sysFfprobe;
+  let isSystem = true;
+
+  if (!finalFfmpeg) {
+    const staticFfmpeg = fixAsarPath(ffmpegStatic);
+    if (staticFfmpeg && fs.existsSync(staticFfmpeg)) {
+      try { fs.chmodSync(staticFfmpeg, 0o755); } catch (e) {}
+      finalFfmpeg = staticFfmpeg;
+      isSystem = false;
+    }
+  }
+
+  if (!finalFfprobe) {
+    const staticFfprobe = ffprobeStatic ? fixAsarPath(ffprobeStatic.path) : null;
+    if (staticFfprobe && fs.existsSync(staticFfprobe)) {
+      try { fs.chmodSync(staticFfprobe, 0o755); } catch (e) {}
+      finalFfprobe = staticFfprobe;
+    }
+  }
+
+  if (finalFfmpeg) ffmpeg.setFfmpegPath(finalFfmpeg);
+  if (finalFfprobe) ffmpeg.setFfmprobePath(finalFfprobe);
+
+  return {
+    ffmpegPath: finalFfmpeg || 'не знайдено',
+    ffprobePath: finalFfprobe || 'не знайдено',
+    isSystem,
+    isAvailable: Boolean(finalFfmpeg)
+  };
 }
 
-if (ffprobePath && fs.existsSync(ffprobePath)) {
-  try { fs.chmodSync(ffprobePath, 0o755); } catch (e) {}
-} else {
-  ffprobePath = 'ffprobe';
-}
-
-try {
-  ffmpeg.setFfmpegPath(ffmpegPath);
-  ffmpeg.setFfmprobePath(ffprobePath);
-} catch (e) {
-  console.warn('Could not set static FFmpeg/FFprobe paths, falling back to system binaries:', e);
-}
+const activeFFmpegStatus = configureFFmpegPaths();
 
 let mainWindow;
 const settingsPath = path.join(app.getPath('userData'), 'r2-settings.json');
@@ -95,6 +132,10 @@ ipcMain.handle('settings:get', () => {
     bucketName: '',
     publicDomain: ''
   };
+});
+
+ipcMain.handle('ffmpeg:getStatus', () => {
+  return activeFFmpegStatus;
 });
 
 ipcMain.handle('settings:save', (event, settings) => {
