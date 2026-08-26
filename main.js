@@ -3,8 +3,6 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const ffmpeg = require('fluent-ffmpeg');
-const ffmpegStatic = require('ffmpeg-static');
-const ffprobeStatic = require('ffprobe-static');
 const { S3Client, PutObjectCommand, HeadBucketCommand, ListObjectsV2Command, DeleteObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 const mime = require('mime-types');
 
