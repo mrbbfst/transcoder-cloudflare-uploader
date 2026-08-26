@@ -60,6 +60,40 @@ body {
   -webkit-app-region: drag;
 }
 
+.header-user-widget {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-user-logged {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.balance-badge {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-color);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+}
+
+.cloud-credit-calc-box {
+  background-color: var(--bg-input);
+  border: 1px dashed var(--accent-color);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .header-title {
   display: flex;
   align-items: center;

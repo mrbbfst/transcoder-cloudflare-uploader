@@ -8,3 +8,6 @@ npm-cache/
 # System & temporary files
 .DS_Store
 *.log
+
+# RunPod worker container code
+runpod_worker/

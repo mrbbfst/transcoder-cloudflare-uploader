@@ -30,6 +30,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (tab === 'explorer') {
       loadExplorer(currentExplorerPrefix);
+    } else if (tab === 'settings') {
+      loadSettings();
     }
   }
 
@@ -353,7 +355,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const masterUrlInput = document.getElementById('master-url-input');
   const copyUrlBtn = document.getElementById('copy-url-btn');
 
-  // Settings elements
+  // R2 Settings elements
   const r2AccountId = document.getElementById('r2-account-id');
   const r2AccessKey = document.getElementById('r2-access-key');
   const r2SecretKey = document.getElementById('r2-secret-key');
@@ -363,6 +365,266 @@ document.addEventListener('DOMContentLoaded', async () => {
   const testSettingsBtn = document.getElementById('test-settings-btn');
   const settingsSavedMsg = document.getElementById('settings-saved-msg');
   const settingsTestMsg = document.getElementById('settings-test-msg');
+  const DEFAULT_PROXY_URL = 'https://transcoding.ss.3w.com.ua';
+
+  // Proxy & Telegram Auth Settings elements
+  const proxyUrlInput = document.getElementById('proxy-url-input');
+  const tgAuthUnlogged = document.getElementById('tg-auth-unlogged');
+  const tgAuthPending = document.getElementById('tg-auth-pending');
+  const tgAuthLogged = document.getElementById('tg-auth-logged');
+  const tgLoginBtn = document.getElementById('tg-login-btn');
+  const tgOtpCode = document.getElementById('tg-otp-code');
+  const tgBotLink = document.getElementById('tg-bot-link');
+  const tgUserInfo = document.getElementById('tg-user-info');
+  const tgRefreshBtn = document.getElementById('tg-refresh-btn');
+  const tgLogoutBtn = document.getElementById('tg-logout-btn');
+
+  let tgAuthToken = '';
+  let authPollInterval = null;
+
+  // Header User Widget Elements
+  const headerAuthBtn = document.getElementById('header-auth-btn');
+  const headerUserLogged = document.getElementById('header-user-logged');
+  const headerBalanceBadge = document.getElementById('header-balance-badge');
+  const headerTopupBtn = document.getElementById('header-topup-btn');
+
+  if (headerAuthBtn) {
+    headerAuthBtn.addEventListener('click', () => {
+      if (navSettingsBtn) navSettingsBtn.click();
+    });
+  }
+
+  let balancePollInterval = null;
+
+  async function openTopupBot() {
+    try {
+      const res = await fetch(`${DEFAULT_PROXY_URL}/api/user/topup-link`);
+      if (res.ok) {
+        const data = await res.json();
+        window.open(data.botLink, '_blank');
+      } else {
+        window.open('https://t.me/', '_blank');
+      }
+    } catch (err) {
+      alert('Не вдалося отримати посилання на бота з сервера.');
+    }
+
+    // Auto poll balance every 3s for 60 seconds after opening topup
+    let pollCount = 0;
+    if (balancePollInterval) clearInterval(balancePollInterval);
+    balancePollInterval = setInterval(async () => {
+      pollCount++;
+      await checkTelegramAuth();
+      if (pollCount >= 20) clearInterval(balancePollInterval);
+    }, 3000);
+  }
+
+  if (headerTopupBtn) {
+    headerTopupBtn.addEventListener('click', openTopupBot);
+  }
+
+  // Dynamic Pricing Cache (in USD $)
+  let serverPricing = {
+    minCostUsd: 0.05,
+    ratesPerMinuteUsd: { '1080p': 0.02, '720p': 0.01, '480p': 0.005, '360p': 0.003 }
+  };
+
+  const cloudCreditCalcBox = document.getElementById('cloud-credit-calc-box');
+  const calcCreditAmount = document.getElementById('calc-credit-amount');
+  const calcCreditSub = document.getElementById('calc-credit-sub');
+
+  async function fetchServerPricing() {
+    try {
+      const res = await fetch(`${DEFAULT_PROXY_URL}/api/transcode/pricing`);
+      if (res.ok) {
+        serverPricing = await res.json();
+      }
+    } catch (e) {}
+    updateCreditCalculator();
+  }
+
+  const calcGpuTime = document.getElementById('calc-gpu-time');
+  const calcCpuTime = document.getElementById('calc-cpu-time');
+  const viewRatesLink = document.getElementById('view-rates-link');
+
+  if (viewRatesLink) {
+    viewRatesLink.addEventListener('click', () => {
+      const rates1080 = serverPricing.ratesPerMinuteUsd ? (serverPricing.ratesPerMinuteUsd['1080p'] || 0.02) : 0.02;
+      const rates720 = serverPricing.ratesPerMinuteUsd ? (serverPricing.ratesPerMinuteUsd['720p'] || 0.012) : 0.012;
+      const rates480 = serverPricing.ratesPerMinuteUsd ? (serverPricing.ratesPerMinuteUsd['480p'] || 0.006) : 0.006;
+      const rates360 = serverPricing.ratesPerMinuteUsd ? (serverPricing.ratesPerMinuteUsd['360p'] || 0.004) : 0.004;
+
+      let ratesMsg = `📊 ТАРИФНА СІТКА ХМАРНОГО GPU:\n\n` +
+        `• 1080p Full HD: $${rates1080.toFixed(3)} / хв\n` +
+        `• 720p HD: $${rates720.toFixed(3)} / хв\n` +
+        `• 480p SD: $${rates480.toFixed(3)} / хв\n` +
+        `• 360p Mobile: $${rates360.toFixed(3)} / хв\n\n` +
+        `💡 Мінімальна вартість одного відео: $${(serverPricing.minCostUsd || 0.05).toFixed(2)}\n` +
+        `⚡ Розрахунки проводяться з точністю до мікро-долара ($0.00001).`;
+      alert(ratesMsg);
+    });
+  }
+
+  function updateCreditCalculator() {
+    const modeRadio = document.querySelector('input[name="transcode-mode"]:checked');
+    const isCloud = modeRadio && modeRadio.value === 'cloud';
+
+    if (!isCloud || !selectedFile) {
+      if (cloudCreditCalcBox) cloudCreditCalcBox.classList.add('hidden');
+      return;
+    }
+
+    if (cloudCreditCalcBox) cloudCreditCalcBox.classList.remove('hidden');
+
+    const durationSec = selectedFile.duration || 60;
+    const minutes = Math.max(1, Math.ceil(durationSec / 60));
+    const activeQualities = Array.from(qualityCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+
+    let ratePerMin = 0;
+    for (const q of activeQualities) {
+      ratePerMin += ((serverPricing.ratesPerMinuteUsd && serverPricing.ratesPerMinuteUsd[q]) || 0.005);
+    }
+
+    const calculated = Number((minutes * ratePerMin).toFixed(2));
+    const totalCostUsd = Math.max(serverPricing.minCostUsd || 0.05, calculated);
+
+    // Dynamic Time Estimator based on File Size, Duration, and Selected Qualities
+    const fileSizeMb = selectedFile.size ? (selectedFile.size / (1024 * 1024)) : 100;
+
+    const gpuWorkloadFactors = { '1080p': 1.0, '720p': 0.5, '480p': 0.25, '360p': 0.15 };
+    const cpuWorkloadFactors = { '1080p': 1.0, '720p': 0.6, '480p': 0.35, '360p': 0.20 };
+
+    let totalGpuFactor = 0;
+    let totalCpuFactor = 0;
+
+    for (const q of activeQualities) {
+      totalGpuFactor += (gpuWorkloadFactors[q] || 0.5);
+      totalCpuFactor += (cpuWorkloadFactors[q] || 0.5);
+    }
+
+    // Network transfer & container startup overhead (~15s + 1s per 15MB transfer)
+    const transferOverheadSec = Math.ceil(15 + (fileSizeMb / 15));
+
+    // End-to-end GPU processing vs local CPU software encoding
+    const pureGpuEncodeSec = Math.ceil((durationSec * totalGpuFactor) / 2.2);
+    const estimatedGpuSec = Math.max(30, transferOverheadSec + pureGpuEncodeSec);
+    const estimatedCpuSec = Math.max(60, Math.ceil(durationSec * totalCpuFactor * 1.8));
+
+    function formatTimeDuration(seconds) {
+      if (seconds < 60) return `~${seconds} сек`;
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      if (mins < 60) return secs > 0 ? `~${mins} хв ${secs} сек` : `~${mins} хв`;
+      const hrs = (mins / 60).toFixed(1);
+      return `~${hrs} год`;
+    }
+
+    const gpuFormatted = formatTimeDuration(estimatedGpuSec);
+    const cpuFormatted = formatTimeDuration(estimatedCpuSec);
+    const speedRatio = Math.max(2, Math.round(estimatedCpuSec / estimatedGpuSec));
+
+    if (calcCreditAmount) calcCreditAmount.textContent = `$${totalCostUsd.toFixed(2)}`;
+    if (calcGpuTime) calcGpuTime.textContent = gpuFormatted;
+    if (calcCpuTime) calcCpuTime.textContent = cpuFormatted;
+    if (calcCreditSub) calcCreditSub.textContent = `(тривалість ~${minutes} хв, розмір ${fileSizeMb.toFixed(0)} MB, якостей: ${activeQualities.length})`;
+  }
+
+  function showTgAuthState(state) {
+    if (tgAuthUnlogged) tgAuthUnlogged.classList.toggle('hidden', state !== 'unlogged');
+    if (tgAuthPending) tgAuthPending.classList.toggle('hidden', state !== 'pending');
+    if (tgAuthLogged) tgAuthLogged.classList.toggle('hidden', state !== 'logged');
+
+    if (headerAuthBtn) headerAuthBtn.classList.toggle('hidden', state === 'logged');
+    if (headerUserLogged) headerUserLogged.classList.toggle('hidden', state !== 'logged');
+  }
+
+  async function checkTelegramAuth() {
+    if (!tgAuthToken) {
+      showTgAuthState('unlogged');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${DEFAULT_PROXY_URL}/api/user/me?_t=${Date.now()}`, {
+        headers: { 'Authorization': `Bearer ${tgAuthToken}` }
+      });
+      if (res.ok) {
+        const user = await res.json();
+        const formattedBal = user.formattedBalance || `$${(user.balanceUsd || 0).toFixed(2)}`;
+        if (tgUserInfo) tgUserInfo.textContent = `👤 @${user.username || user.firstName || user.telegramId} | 💳 Баланс: ${formattedBal}`;
+        if (headerBalanceBadge) headerBalanceBadge.textContent = `💳 ${formattedBal}`;
+        showTgAuthState('logged');
+      } else {
+        tgAuthToken = '';
+        showTgAuthState('unlogged');
+      }
+    } catch (err) {
+      if (tgUserInfo) tgUserInfo.textContent = '⚠️ Хмарний сервер тимчасово недоступний';
+      showTgAuthState('logged');
+    }
+  }
+
+  if (headerBalanceBadge) {
+    headerBalanceBadge.style.cursor = 'pointer';
+    headerBalanceBadge.title = 'Клацніть для оновлення балансу';
+    headerBalanceBadge.addEventListener('click', checkTelegramAuth);
+  }
+
+  // Periodic background balance refresh every 10 seconds
+  setInterval(() => {
+    if (tgAuthToken) checkTelegramAuth();
+  }, 10000);
+
+  if (tgLoginBtn) {
+    tgLoginBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch(`${DEFAULT_PROXY_URL}/api/auth/request-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Сервер повернув помилку ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (tgOtpCode) tgOtpCode.textContent = data.code;
+        if (tgBotLink) tgBotLink.href = data.botDeepLink;
+        showTgAuthState('pending');
+
+        if (authPollInterval) clearInterval(authPollInterval);
+        authPollInterval = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`${DEFAULT_PROXY_URL}/api/auth/verify-code`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code: data.code })
+            });
+            const pollData = await pollRes.json();
+            if (pollData.confirmed && pollData.token) {
+              clearInterval(authPollInterval);
+              tgAuthToken = pollData.token;
+              saveSettingsBtn.click();
+              checkTelegramAuth();
+            }
+          } catch (e) {}
+        }, 2000);
+      } catch (err) {
+        alert('Помилка підключення до хмарного сервера: ' + err.message);
+      }
+    });
+  }
+
+  if (tgRefreshBtn) tgRefreshBtn.addEventListener('click', checkTelegramAuth);
+
+  if (tgLogoutBtn) {
+    tgLogoutBtn.addEventListener('click', () => {
+      if (authPollInterval) clearInterval(authPollInterval);
+      tgAuthToken = '';
+      saveSettingsBtn.click();
+      showTgAuthState('unlogged');
+    });
+  }
 
   let selectedFile = null;
 
@@ -377,7 +639,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       r2SecretKey.value = settings.secretAccessKey || '';
       r2BucketName.value = settings.bucketName || '';
       r2PublicDomain.value = settings.publicDomain || '';
+
+      if (proxyUrlInput) proxyUrlInput.value = settings.proxyUrl || 'http://localhost:3000';
+      if (settings.tgAuthToken) {
+        tgAuthToken = settings.tgAuthToken;
+        checkTelegramAuth();
+      } else {
+        showTgAuthState('unlogged');
+      }
     }
+
+    fetchServerPricing();
 
     if (ffmpegStatusBox) {
       const status = await window.api.getFFmpegStatus();
@@ -393,29 +665,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   loadSettings();
 
-  // --- Tab Navigation ---
-  navTranscodeBtn.addEventListener('click', () => {
-    navTranscodeBtn.classList.add('active');
-    navSettingsBtn.classList.remove('active');
-    viewTranscode.classList.remove('hidden');
-    viewSettings.classList.add('hidden');
+  const transcodeModeRadios = document.querySelectorAll('input[name="transcode-mode"]');
+  transcodeModeRadios.forEach(radio => {
+    radio.addEventListener('change', updateCreditCalculator);
   });
 
-  navSettingsBtn.addEventListener('click', () => {
-    navSettingsBtn.classList.add('active');
-    navTranscodeBtn.classList.remove('active');
-    viewSettings.classList.remove('hidden');
-    viewTranscode.classList.add('hidden');
+  qualityCheckboxes.forEach(cb => {
+    cb.addEventListener('change', updateCreditCalculator);
   });
 
   // --- Save Settings ---
   saveSettingsBtn.addEventListener('click', async () => {
     const settings = {
-      accountId: r2AccountId.value.trim(),
-      accessKeyId: r2AccessKey.value.trim(),
-      secretAccessKey: r2SecretKey.value.trim(),
-      bucketName: r2BucketName.value.trim(),
-      publicDomain: r2PublicDomain.value.trim()
+      accountId: r2AccountId ? r2AccountId.value.trim() : '',
+      accessKeyId: r2AccessKey ? r2AccessKey.value.trim() : '',
+      secretAccessKey: r2SecretKey ? r2SecretKey.value.trim() : '',
+      bucketName: r2BucketName ? r2BucketName.value.trim() : '',
+      publicDomain: r2PublicDomain ? r2PublicDomain.value.trim() : '',
+      proxyUrl: DEFAULT_PROXY_URL,
+      tgAuthToken
     };
 
     const res = await window.api.saveSettings(settings);
@@ -478,7 +746,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (transcodePercent) transcodePercent.textContent = '0%';
     if (uploadBar) uploadBar.style.width = '0%';
     if (uploadPercent) uploadPercent.textContent = '0%';
-    if (transcodeStatusText) transcodeStatusText.textContent = '1. Транскодування відео (FFmpeg)';
+    if (transcodeStatusText) transcodeStatusText.textContent = '1. Транскодування відео';
     if (uploadStatusText) uploadStatusText.textContent = '2. Завантаження файлів у Cloudflare R2';
 
     // Probe resolution if not provided
@@ -499,6 +767,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     dropContentEmpty.classList.add('hidden');
     dropContentSelected.classList.remove('hidden');
     validateForm();
+    updateCreditCalculator();
   }
 
   function filterQualitiesBySourceHeight(sourceHeight) {
@@ -691,13 +960,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     uploadPercent.textContent = '0%';
     statusSpinner.classList.remove('hidden');
 
+    const transcodeModeRadio = document.querySelector('input[name="transcode-mode"]:checked');
+    const transcodeMode = transcodeModeRadio ? transcodeModeRadio.value : 'local';
+
+    const cloudSettings = {
+      proxyUrl: DEFAULT_PROXY_URL,
+      authToken: tgAuthToken
+    };
+
     window.api.startProcessing({
       inputPath: selectedFile.path,
+      durationSec: selectedFile.duration || 60,
+      fileSize: selectedFile.size || 0,
       folderName: folderNameInput.value.trim(),
       selectedQualities,
       r2Settings,
       keepLocal: keepLocalCheck.checked,
-      addRandomSuffix: randomSuffixCheck ? randomSuffixCheck.checked : false
+      addRandomSuffix: randomSuffixCheck ? randomSuffixCheck.checked : false,
+      transcodeMode,
+      cloudSettings
     });
   });
 
@@ -710,8 +991,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     transcodeBar.style.width = `${percent}%`;
     transcodePercent.textContent = `${percent}%`;
     if (currentQuality && transcodeStatusText) {
-      transcodeStatusText.textContent = `1. Транскодування [${qualityIndex}/${totalQualities}]: ${currentQuality} (${percent}%)`;
-      updateQueueItemStatus(currentQuality, '⚙️ Кодується', 'tag-transcoding');
+      if (currentQuality === 'Cloud GPU') {
+        transcodeStatusText.textContent = `1. Хмарне GPU транскодування (${percent}%)`;
+      } else {
+        transcodeStatusText.textContent = `1. Транскодування [${qualityIndex}/${totalQualities}]: ${currentQuality} (${percent}%)`;
+        updateQueueItemStatus(currentQuality, '⚙️ Кодується', 'tag-transcoding');
+      }
     }
   });
 
@@ -750,6 +1035,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     masterUrlInput.value = masterUrl;
     resultCard.classList.remove('hidden');
+    setProcessingState(false);
+  });
+
+  window.api.onCancelled(() => {
+    statusSpinner.classList.add('hidden');
+    statusText.textContent = '⏹️ Процес зупинено користувачем.';
+    if (stopBtn) stopBtn.classList.add('hidden');
     setProcessingState(false);
   });
 

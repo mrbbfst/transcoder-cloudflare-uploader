@@ -5,17 +5,22 @@ const os = require('os');
 const crypto = require('crypto');
 const ffmpeg = require('fluent-ffmpeg');
 const { S3Client, PutObjectCommand, HeadBucketCommand, ListObjectsV2Command, DeleteObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
+const { Upload } = require('@aws-sdk/lib-storage');
 const mime = require('mime-types');
+const { createCloudProvider } = require('./cloudTranscoder');
 
 const { execSync } = require('child_process');
 
 // Helper: Check system executable or user data directory
 function findSystemExecutable(cmdName) {
   const commonPaths = [
-    `/opt/homebrew/bin/${cmdName}`,
     `/usr/local/bin/${cmdName}`,
+    `/opt/homebrew/bin/${cmdName}`,
     `/usr/bin/${cmdName}`,
-    `C:\\ffmpeg\\bin\\${cmdName}.exe`
+    `/bin/${cmdName}`,
+    `${os.homedir()}/bin/${cmdName}`,
+    `C:\\ffmpeg\\bin\\${cmdName}.exe`,
+    `C:\\Program Files\\ffmpeg\\bin\\${cmdName}.exe`
   ];
 
   for (const p of commonPaths) {
@@ -23,8 +28,9 @@ function findSystemExecutable(cmdName) {
   }
 
   try {
+    const envPath = `${process.env.PATH || ''}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`;
     const whichCmd = process.platform === 'win32' ? `where ${cmdName}` : `which ${cmdName}`;
-    const out = execSync(whichCmd, { encoding: 'utf-8' }).trim().split('\r\n')[0].split('\n')[0];
+    const out = execSync(whichCmd, { encoding: 'utf-8', env: { ...process.env, PATH: envPath } }).trim().split('\r\n')[0].split('\n')[0];
     if (out && fs.existsSync(out)) return out;
   } catch (e) {}
 
@@ -48,8 +54,22 @@ function configureFFmpegPaths() {
 
 const activeFFmpegStatus = configureFFmpegPaths();
 
-let mainWindow;
-const settingsPath = path.join(app.getPath('userData'), 'r2-settings.json');
+app.setName('HLS Transcoder R2');
+
+function getSettingsFilePath() {
+  const primaryPath = path.join(app.getPath('userData'), 'r2-settings.json');
+  if (fs.existsSync(primaryPath)) return primaryPath;
+
+  const appDataDir = path.dirname(app.getPath('userData'));
+  const altNames = ['HLS Transcoder R2', 'transcoder-uploader'];
+  for (const alt of altNames) {
+    const altPath = path.join(appDataDir, alt, 'r2-settings.json');
+    if (fs.existsSync(altPath)) return altPath;
+  }
+  return primaryPath;
+}
+
+const settingsPath = getSettingsFilePath();
 
 let currentFfmpegCommand = null;
 let activeCancelRef = { isCancelled: false };
@@ -382,30 +402,40 @@ ipcMain.handle('r2:uploadAnyFile', async (event, prefix = '') => {
 
 // --- Video Probing Handlers ---
 ipcMain.handle('dialog:selectFile', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
-    filters: [
-      { name: 'Videos', extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'flv', 'ts', 'm4v'] },
-      { name: 'All Files', extensions: ['*'] }
-    ]
-  });
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Videos', extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'flv', 'ts', 'm4v'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
 
-  if (result.canceled || result.filePaths.length === 0) {
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    const filePath = result.filePaths[0];
+    const stats = fs.statSync(filePath);
+    let videoInfo = { duration: 0, width: 0, height: 0 };
+    try {
+      videoInfo = await getVideoMetadata(filePath);
+    } catch (e) {
+      console.warn('Could not probe video metadata:', e);
+    }
+
+    return {
+      path: filePath,
+      name: path.basename(filePath),
+      size: stats.size,
+      width: videoInfo ? (videoInfo.width || 0) : 0,
+      height: videoInfo ? (videoInfo.height || 0) : 0,
+      duration: videoInfo ? (videoInfo.duration || 0) : 0
+    };
+  } catch (err) {
+    console.error('Error selecting file in dialog:', err);
     return null;
   }
-
-  const filePath = result.filePaths[0];
-  const stats = fs.statSync(filePath);
-  const videoInfo = await getVideoMetadata(filePath);
-
-  return {
-    path: filePath,
-    name: path.basename(filePath),
-    size: stats.size,
-    width: videoInfo.width,
-    height: videoInfo.height,
-    duration: videoInfo.duration
-  };
 });
 
 ipcMain.handle('video:getResolution', async (event, filePath) => {
@@ -453,7 +483,7 @@ function clearDockProgressBar() {
 }
 
 ipcMain.on('process:start', async (event, data) => {
-  const { inputPath, folderName, selectedQualities, r2Settings, keepLocal, addRandomSuffix } = data;
+  const { inputPath, durationSec: inputDurationSec, folderName, selectedQualities, r2Settings, keepLocal, addRandomSuffix, transcodeMode, cloudSettings } = data;
   const tempDir = path.join(os.tmpdir(), `transcoder-${Date.now()}`);
   activeCancelRef = { isCancelled: false };
   const cancelRef = activeCancelRef;
@@ -472,6 +502,172 @@ ipcMain.on('process:start', async (event, data) => {
       mainWindow.webContents.send('process:error', { error: errorMsg });
     }
   };
+
+  if (transcodeMode === 'cloud') {
+    try {
+      if (!fs.existsSync(inputPath)) {
+        throw new Error(`Вхідний файл не знайдено: ${inputPath}`);
+      }
+
+      if (!r2Settings.accountId || !r2Settings.accessKeyId || !r2Settings.secretAccessKey || !r2Settings.bucketName || !r2Settings.publicDomain) {
+        throw new Error('Будь ласка, заповніть усі налаштування Cloudflare R2!');
+      }
+
+      if (!selectedQualities || selectedQualities.length === 0) {
+        throw new Error('Виберіть хоча б один рівень якості!');
+      }
+
+      const s3Client = new S3Client({
+        region: 'auto',
+        endpoint: `https://${r2Settings.accountId.trim()}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: r2Settings.accessKeyId.trim(),
+          secretAccessKey: r2Settings.secretAccessKey.trim()
+        }
+      });
+
+      let targetFolder = (folderName && folderName.trim()) ? folderName.trim().replace(/^\/+|\/+$/g, '') : `video-${Date.now()}`;
+      if (addRandomSuffix) {
+        targetFolder = `${targetFolder}-${crypto.randomBytes(10).toString('hex')}`;
+      }
+
+      const tempR2Key = `temp-inputs/${Date.now()}_${path.basename(inputPath)}`;
+      sendStatus('📤 Завантаження відео в R2 для обробки на GPU...');
+      updateDockProgressBar(10, 0);
+
+      const fileStream = fs.createReadStream(inputPath);
+      const r2Upload = new Upload({
+        client: s3Client,
+        params: {
+          Bucket: r2Settings.bucketName.trim(),
+          Key: tempR2Key,
+          Body: fileStream,
+          ContentType: mime.lookup(inputPath) || 'video/mp4'
+        },
+        queueSize: 4,
+        partSize: 8 * 1024 * 1024 // 8 MB multipart chunks
+      });
+
+      r2Upload.on('httpUploadProgress', (progress) => {
+        if (progress.total) {
+          const pct = Math.round((progress.loaded / progress.total) * 15) + 10;
+          updateDockProgressBar(pct, 0);
+        }
+      });
+
+      await r2Upload.done();
+
+      sendStatus('🚀 Ініціалізація Хмарного GPU воркера...');
+      updateDockProgressBar(25, 0);
+
+      let durationSec = inputDurationSec;
+      if (!durationSec) {
+        const meta = await getVideoResolution(inputPath);
+        durationSec = meta ? meta.duration : 60;
+      }
+
+      const provider = createCloudProvider(cloudSettings || {});
+      const jobId = await provider.startJob({
+        input_r2_key: tempR2Key,
+        target_folder: targetFolder,
+        selected_qualities: selectedQualities,
+        duration_sec: durationSec || 60,
+        r2_settings: r2Settings,
+        add_random_suffix: false
+      });
+
+      let isFinished = false;
+      let currentProgress = 25;
+      let uploadProgress = 0;
+      const totalEstimatedSec = Math.max(30, Math.ceil((durationSec || 60) * selectedQualities.length * 0.3));
+
+      while (!isFinished) {
+        if (cancelRef.isCancelled) {
+          await provider.cancelJob(jobId);
+          try { await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key })); } catch (e) {}
+          clearDockProgressBar();
+          mainWindow.webContents.send('process:cancelled');
+          return;
+        }
+
+        const statusRes = await provider.getJobStatus(jobId);
+        const state = statusRes.status || statusRes.state;
+
+        if (state === 'IN_QUEUE') {
+          sendStatus('⏳ В черзі Хмарного GPU сервера...');
+          currentProgress = Math.min(35, currentProgress + 2);
+          updateDockProgressBar(currentProgress, 10);
+        } else if (state === 'IN_PROGRESS') {
+          currentProgress = Math.min(92, currentProgress + Math.max(1, Math.round(60 / Math.max(5, totalEstimatedSec / 2.5))));
+          uploadProgress = Math.min(85, Math.round((currentProgress / 92) * 85));
+
+          sendStatus(`⚡ Хмарне GPU транскодування (${currentProgress}%)...`);
+          updateDockProgressBar(currentProgress, uploadProgress);
+
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('transcode:progress', {
+              percent: currentProgress,
+              currentQuality: 'Cloud GPU',
+              qualityIndex: 1,
+              totalQualities: selectedQualities.length
+            });
+
+            mainWindow.webContents.send('upload:progress', {
+              uploadedFiles: selectedQualities.length,
+              percent: uploadProgress,
+              stepDescription: 'Обробка та збереження HLS сегментів у CDN...'
+            });
+          }
+        } else if (state === 'COMPLETED') {
+          isFinished = true;
+          currentProgress = 100;
+          uploadProgress = 100;
+
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('transcode:progress', {
+              percent: 100,
+              currentQuality: 'Cloud GPU',
+              qualityIndex: selectedQualities.length,
+              totalQualities: selectedQualities.length
+            });
+
+            mainWindow.webContents.send('upload:progress', {
+              uploadedFiles: selectedQualities.length,
+              percent: 100,
+              stepDescription: 'Усі файли завантажено у CDN!'
+            });
+          }
+
+          try { await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key })); } catch (e) {}
+        } else if (state === 'FAILED') {
+          try { await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key })); } catch (e) {}
+          throw new Error(`Хмарне транскодування завершилось помилкою: ${statusRes.error || 'Cloud Job Failed'}`);
+        }
+
+        await new Promise(res => setTimeout(res, 2000));
+      }
+
+      let domain = r2Settings.publicDomain.trim().replace(/\/+$/, '');
+      if (!domain.startsWith('http://') && !domain.startsWith('https://')) {
+        domain = `https://${domain}`;
+      }
+      const masterUrl = `${domain}/${targetFolder}/master.m3u8`;
+
+      sendStatus('Завершено!', 'Всі файли успішно транскодовано та завантажено на GPU.');
+      clearDockProgressBar();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('process:complete', {
+          masterUrl,
+          folderName: targetFolder,
+          totalFiles: selectedQualities.length * 10
+        });
+      }
+      return;
+    } catch (err) {
+      sendError(err.message);
+      return;
+    }
+  }
 
   try {
     if (!fs.existsSync(inputPath)) {
