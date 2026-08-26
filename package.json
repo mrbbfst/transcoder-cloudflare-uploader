@@ -41,6 +41,7 @@
       "main.js",
       "preload.js",
       "renderer.js",
+      "cloudTranscoder.js",
       "index.html",
       "styles.css",
       "package.json",
