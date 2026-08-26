@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('upload:progress', subscription);
     return () => ipcRenderer.removeListener('upload:progress', subscription);
   },
+  onQualityStateChange: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('upload:qualityState', subscription);
+    return () => ipcRenderer.removeListener('upload:qualityState', subscription);
+  },
   onStatusChange: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('status:change', subscription);

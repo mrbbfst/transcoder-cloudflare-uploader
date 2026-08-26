@@ -487,6 +487,8 @@ ipcMain.on('process:start', async (event, data) => {
 
     let uploadedCount = 0;
     let totalUploadedFilesCount = 0;
+    const estSegments = Math.max(1, Math.ceil((videoDuration || 60) / 6)) + 1;
+    const totalExpectedFiles = selectedQualities.length * estSegments + 1;
     const uploadTasks = [];
 
     const uploadFilesBatch = async (filesBatch, stepDescription) => {
@@ -523,9 +525,13 @@ ipcMain.on('process:start', async (event, data) => {
 
         uploadedCount++;
         totalUploadedFilesCount++;
+        const uploadPct = totalExpectedFiles > 0 ? Math.min(99, Math.round((totalUploadedFilesCount / totalExpectedFiles) * 100)) : 0;
+
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('upload:progress', {
-            uploadedFiles: uploadedCount,
+            uploadedFiles: totalUploadedFilesCount,
+            totalExpectedFiles,
+            percent: uploadPct,
             stepDescription
           });
         }
@@ -577,7 +583,15 @@ ipcMain.on('process:start', async (event, data) => {
       const qualityFiles = getAllFilesRecursive(qDir);
       sendStatus(`Паралельне завантаження в CDN: ${qKey} (${qualityFiles.length} файлів)...`);
 
-      const uploadPromise = uploadFilesBatch(qualityFiles, `Завантажено ${qKey}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('upload:qualityState', { quality: qKey, status: 'uploading' });
+      }
+
+      const uploadPromise = uploadFilesBatch(qualityFiles, `Завантажено ${qKey}`).then(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('upload:qualityState', { quality: qKey, status: 'uploaded' });
+        }
+      });
       uploadTasks.push(uploadPromise);
     }
 
@@ -597,6 +611,10 @@ ipcMain.on('process:start', async (event, data) => {
     fs.writeFileSync(masterPath, masterPlaylistContent, 'utf-8');
 
     sendStatus('Фіналізація завантаження в Cloudflare R2...');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('upload:qualityState', { quality: 'master', status: 'uploading' });
+    }
+
     await Promise.all(uploadTasks);
 
     if (cancelRef.isCancelled) {
@@ -606,6 +624,9 @@ ipcMain.on('process:start', async (event, data) => {
     }
 
     await uploadFilesBatch([masterPath], 'Master плейлист завантажено');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('upload:qualityState', { quality: 'master', status: 'uploaded' });
+    }
 
     let domain = r2Settings.publicDomain.trim().replace(/\/+$/, '');
     if (!domain.startsWith('http://') && !domain.startsWith('https://')) {

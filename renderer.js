@@ -434,6 +434,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!fileInfo) return;
     selectedFile = fileInfo;
 
+    // Reset previous progress & result UI
+    if (progressCard) progressCard.classList.add('hidden');
+    if (resultCard) resultCard.classList.add('hidden');
+    if (masterUrlInput) masterUrlInput.value = '';
+    if (fileQueueList) fileQueueList.innerHTML = '';
+    if (transcodeBar) transcodeBar.style.width = '0%';
+    if (transcodePercent) transcodePercent.textContent = '0%';
+    if (uploadBar) uploadBar.style.width = '0%';
+    if (uploadPercent) uploadPercent.textContent = '0%';
+
     // Probe resolution if not provided
     if (!fileInfo.height && fileInfo.path) {
       const meta = await window.api.getVideoResolution(fileInfo.path);
@@ -666,15 +676,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  window.api.onUploadProgress(({ uploadedFiles, stepDescription }) => {
-    uploadBar.style.width = '100%';
-    uploadPercent.textContent = `Паралельно завантажено: ${uploadedFiles} файлів`;
+  window.api.onUploadProgress(({ uploadedFiles, percent, stepDescription }) => {
+    const curPct = percent !== undefined ? percent : 0;
+    uploadBar.style.width = `${curPct}%`;
+    uploadPercent.textContent = `${curPct}% (${uploadedFiles} файлів у CDN)`;
     if (stepDescription) {
-      statusText.textContent = `${stepDescription} (${uploadedFiles} файлів у CDN)...`;
-      if (stepDescription.includes('1080p')) updateQueueItemStatus('1080p', '✅ Завантажено', 'tag-uploaded');
-      if (stepDescription.includes('720p')) updateQueueItemStatus('720p', '✅ Завантажено', 'tag-uploaded');
-      if (stepDescription.includes('480p')) updateQueueItemStatus('480p', '✅ Завантажено', 'tag-uploaded');
-      if (stepDescription.includes('360p')) updateQueueItemStatus('360p', '✅ Завантажено', 'tag-uploaded');
+      statusText.textContent = `${stepDescription} (${uploadedFiles} файлів)...`;
+    }
+  });
+
+  window.api.onQualityStateChange(({ quality, status }) => {
+    if (status === 'uploading') {
+      updateQueueItemStatus(quality, '☁️ Завантажується', 'tag-uploading');
+    } else if (status === 'uploaded') {
+      updateQueueItemStatus(quality, '✅ Завантажено', 'tag-uploaded');
     }
   });
 
@@ -685,6 +700,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     transcodePercent.textContent = '100%';
     uploadBar.style.width = '100%';
     uploadPercent.textContent = '100%';
+    if (stopBtn) stopBtn.classList.add('hidden');
 
     if (fileQueueList) {
       fileQueueList.querySelectorAll('.queue-tag').forEach(tag => {
@@ -701,8 +717,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.api.onError(({ error }) => {
     statusSpinner.classList.add('hidden');
     statusText.textContent = `Помилка: ${error}`;
+    if (stopBtn) stopBtn.classList.add('hidden');
     alert(`Сталася помилка:\n${error}`);
-    startBtn.disabled = false;
+    setProcessingState(false);
   });
 
   // Copy Master M3U8 URL button
