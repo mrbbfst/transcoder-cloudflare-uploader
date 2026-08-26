@@ -432,7 +432,7 @@ ipcMain.on('process:stop', () => {
 });
 
 ipcMain.on('process:start', async (event, data) => {
-  const { inputPath, folderName, selectedQualities, r2Settings, keepLocal } = data;
+  const { inputPath, folderName, selectedQualities, r2Settings, keepLocal, addRandomSuffix } = data;
   const tempDir = path.join(os.tmpdir(), `transcoder-${Date.now()}`);
   activeCancelRef = { isCancelled: false };
   const cancelRef = activeCancelRef;
