@@ -68,7 +68,8 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 16, y: 16 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

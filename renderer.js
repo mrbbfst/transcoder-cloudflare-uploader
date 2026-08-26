@@ -90,6 +90,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function disableExplorerControls(disabled) {
+    if (explorerUploadBtn) explorerUploadBtn.disabled = disabled;
+    if (explorerDeleteSelectedBtn) explorerDeleteSelectedBtn.disabled = disabled;
+    if (explorerRefreshBtn) explorerRefreshBtn.disabled = disabled;
+    if (selectAllExplorer) selectAllExplorer.disabled = disabled;
+    if (explorerListBody) {
+      explorerListBody.querySelectorAll('button, input').forEach(el => el.disabled = disabled);
+    }
+  }
+
   if (explorerDeleteSelectedBtn) {
     explorerDeleteSelectedBtn.addEventListener('click', async () => {
       const checkedBoxes = Array.from(explorerListBody.querySelectorAll('.item-checkbox:checked'));
@@ -102,12 +112,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (confirm(`Ви дійсно бажаєте видалити ${items.length} обраних елементів?`)) {
         explorerDeleteSelectedBtn.disabled = true;
+        explorerDeleteSelectedBtn.textContent = '⏳ Видалення...';
+        explorerStatus.className = 'explorer-status info';
+        explorerStatus.textContent = `⏳ Видалення ${items.length} обраних елементів з R2 бакета... (зачекайте)`;
+        explorerStatus.classList.remove('hidden');
+        disableExplorerControls(true);
+
         const res = await window.api.deleteBatchR2Objects(items);
         if (res.success) {
           loadExplorer(currentExplorerPrefix);
         } else {
           alert(`Помилка групового видалення: ${res.error}`);
-          explorerDeleteSelectedBtn.disabled = false;
+          disableExplorerControls(false);
         }
       }
     });
@@ -233,12 +249,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         const name = btn.getAttribute('data-name');
         if (confirm(`Ви впевнені, що хочете видалити файл "${name}"?`)) {
           btn.disabled = true;
+          btn.textContent = '⏳...';
+          explorerStatus.className = 'explorer-status info';
+          explorerStatus.textContent = `⏳ Видалення файла "${name}" з R2...`;
+          explorerStatus.classList.remove('hidden');
+          disableExplorerControls(true);
+
           const res = await window.api.deleteR2Object({ key, isFolder: false });
           if (res.success) {
             loadExplorer(currentExplorerPrefix);
           } else {
             alert(`Помилка видалення: ${res.error}`);
             btn.disabled = false;
+            btn.textContent = '🗑️';
+            disableExplorerControls(false);
           }
         }
       });
@@ -251,12 +275,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         const name = btn.getAttribute('data-name');
         if (confirm(`Ви дійсно хочете повністю видалити папку "${name}" та всі її HLS файли?`)) {
           btn.disabled = true;
+          btn.textContent = '⏳ Видалення...';
+          explorerStatus.className = 'explorer-status info';
+          explorerStatus.textContent = `⏳ Видалення папки "${name}" та усіх її HLS файлів з R2... (зачекайте)`;
+          explorerStatus.classList.remove('hidden');
+          disableExplorerControls(true);
+
           const res = await window.api.deleteR2Object({ key: prefix, isFolder: true });
           if (res.success) {
             loadExplorer(currentExplorerPrefix);
           } else {
             alert(`Помилка видалення папки: ${res.error}`);
             btn.disabled = false;
+            btn.textContent = '🗑️ Видалити';
+            disableExplorerControls(false);
           }
         }
       });

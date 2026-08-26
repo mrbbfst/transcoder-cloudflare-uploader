@@ -50,13 +50,13 @@ body {
 
 /* Header */
 .app-header {
-  height: 52px;
+  height: 48px;
   background-color: var(--bg-header);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px 0 80px; /* Space for macOS window controls */
+  padding: 0 16px 0 84px; /* Space for macOS window controls */
   -webkit-app-region: drag;
 }
 
