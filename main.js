@@ -10,62 +10,40 @@ const mime = require('mime-types');
 
 const { execSync } = require('child_process');
 
-// Helper: Check system executable or fallback to static binary
+// Helper: Check system executable or user data directory
 function findSystemExecutable(cmdName) {
-  try {
-    const whichCmd = process.platform === 'win32' ? `where ${cmdName}` : `which ${cmdName}`;
-    const out = execSync(whichCmd, { encoding: 'utf-8' }).trim().split('\r\n')[0].split('\n')[0];
-    if (out && fs.existsSync(out)) return out;
-  } catch (e) {}
-
   const commonPaths = [
     `/opt/homebrew/bin/${cmdName}`,
     `/usr/local/bin/${cmdName}`,
-    `/usr/bin/${cmdName}`
+    `/usr/bin/${cmdName}`,
+    `C:\\ffmpeg\\bin\\${cmdName}.exe`
   ];
 
   for (const p of commonPaths) {
     if (fs.existsSync(p)) return p;
   }
 
+  try {
+    const whichCmd = process.platform === 'win32' ? `where ${cmdName}` : `which ${cmdName}`;
+    const out = execSync(whichCmd, { encoding: 'utf-8' }).trim().split('\r\n')[0].split('\n')[0];
+    if (out && fs.existsSync(out)) return out;
+  } catch (e) {}
+
   return null;
 }
-
-const fixAsarPath = (p) => p ? p.replace('app.asar', 'app.asar.unpacked') : p;
 
 function configureFFmpegPaths() {
   let sysFfmpeg = findSystemExecutable('ffmpeg');
   let sysFfprobe = findSystemExecutable('ffprobe');
 
-  let finalFfmpeg = sysFfmpeg;
-  let finalFfprobe = sysFfprobe;
-  let isSystem = true;
-
-  if (!finalFfmpeg) {
-    const staticFfmpeg = fixAsarPath(ffmpegStatic);
-    if (staticFfmpeg && fs.existsSync(staticFfmpeg)) {
-      try { fs.chmodSync(staticFfmpeg, 0o755); } catch (e) {}
-      finalFfmpeg = staticFfmpeg;
-      isSystem = false;
-    }
-  }
-
-  if (!finalFfprobe) {
-    const staticFfprobe = ffprobeStatic ? fixAsarPath(ffprobeStatic.path) : null;
-    if (staticFfprobe && fs.existsSync(staticFfprobe)) {
-      try { fs.chmodSync(staticFfprobe, 0o755); } catch (e) {}
-      finalFfprobe = staticFfprobe;
-    }
-  }
-
-  if (finalFfmpeg) ffmpeg.setFfmpegPath(finalFfmpeg);
-  if (finalFfprobe) ffmpeg.setFfmprobePath(finalFfprobe);
+  if (sysFfmpeg) ffmpeg.setFfmpegPath(sysFfmpeg);
+  if (sysFfprobe) ffmpeg.setFfprobePath(sysFfprobe);
 
   return {
-    ffmpegPath: finalFfmpeg || 'не знайдено',
-    ffprobePath: finalFfprobe || 'не знайдено',
-    isSystem,
-    isAvailable: Boolean(finalFfmpeg)
+    ffmpegPath: sysFfmpeg || 'не знайдено',
+    ffprobePath: sysFfprobe || 'не знайдено',
+    isSystem: true,
+    isAvailable: Boolean(sysFfmpeg)
   };
 }
 
