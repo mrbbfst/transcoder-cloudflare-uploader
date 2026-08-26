@@ -491,6 +491,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     validateForm();
   }
 
+  let isProcessingActive = false;
+
+  function setProcessingState(isProcessing) {
+    isProcessingActive = isProcessing;
+
+    if (selectFileBtn) selectFileBtn.disabled = isProcessing;
+    if (changeFileBtn) changeFileBtn.disabled = isProcessing;
+    if (folderNameInput) folderNameInput.disabled = isProcessing;
+    if (keepLocalCheck) keepLocalCheck.disabled = isProcessing;
+    if (startBtn) startBtn.disabled = isProcessing || !selectedFile;
+
+    qualityCheckboxes.forEach(cb => {
+      if (isProcessing) {
+        cb.disabled = true;
+      } else {
+        const height = selectedFile ? (selectedFile.height || 9999) : 9999;
+        const presetHeight = PRESET_HEIGHTS[cb.value] || 0;
+        cb.disabled = presetHeight > height;
+      }
+    });
+  }
 
   selectFileBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
@@ -500,11 +521,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   changeFileBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
+    if (isProcessingActive) return;
     const fileInfo = await window.api.selectFile();
     if (fileInfo) updateSelectedFile(fileInfo);
   });
 
   dropZone.addEventListener('click', async () => {
+    if (isProcessingActive) return;
     if (!selectedFile) {
       const fileInfo = await window.api.selectFile();
       if (fileInfo) updateSelectedFile(fileInfo);
@@ -515,7 +538,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    dropZone.classList.add('drag-over');
+    if (!isProcessingActive) dropZone.classList.add('drag-over');
   });
 
   dropZone.addEventListener('dragleave', (e) => {
@@ -528,6 +551,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     e.preventDefault();
     e.stopPropagation();
     dropZone.classList.remove('drag-over');
+    if (isProcessingActive) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
@@ -545,13 +569,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   function validateForm() {
+    if (isProcessingActive) return;
     const hasQualities = Array.from(qualityCheckboxes).some(cb => cb.checked);
     startBtn.disabled = !(selectedFile && hasQualities);
   }
 
   // --- Start Processing ---
   startBtn.addEventListener('click', async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || isProcessingActive) return;
 
     const r2Settings = {
       accountId: r2AccountId.value.trim(),
@@ -571,10 +596,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       .filter(cb => cb.checked)
       .map(cb => cb.value);
 
-    // UI Reset
+    // UI Reset & Lock
+    setProcessingState(true);
     progressCard.classList.remove('hidden');
     resultCard.classList.add('hidden');
-    startBtn.disabled = true;
     transcodeBar.style.width = '0%';
     transcodePercent.textContent = '0%';
     uploadBar.style.width = '0%';
@@ -621,7 +646,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     masterUrlInput.value = masterUrl;
     resultCard.classList.remove('hidden');
-    startBtn.disabled = false;
+    setProcessingState(false);
   });
 
   window.api.onError(({ error }) => {
