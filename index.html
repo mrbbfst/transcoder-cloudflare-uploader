@@ -116,7 +116,7 @@
 
             <div class="progress-block">
               <div class="progress-label">
-                <span>1. Транскодування відео (FFmpeg)</span>
+                <span id="transcode-status-text">1. Транскодування відео (FFmpeg)</span>
                 <span id="transcode-percent">0%</span>
               </div>
               <div class="progress-bar-bg">
@@ -126,7 +126,7 @@
 
             <div class="progress-block">
               <div class="progress-label">
-                <span>2. Завантаження файлів у Cloudflare R2</span>
+                <span id="upload-status-text">2. Завантаження файлів у Cloudflare R2</span>
                 <span id="upload-percent">0%</span>
               </div>
               <div class="progress-bar-bg">
@@ -224,7 +224,8 @@
 
         <div class="form-group">
           <label for="r2-public-domain">Публічний CDN Домен / Public Domain URL</label>
-          <input type="text" id="r2-public-domain" placeholder="наприклад: https://pub-xxxxxx.r2.dev або https://cdn.yourdomain.com" />
+          <input type="text" id="r2-public-domain" placeholder="наприклад: cdn.yourdomain.com або pub-xxxxxx.r2.dev" />
+          <small style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">💡 Вкажіть ваш кастомний домен (наприклад, <code>cdn.yourdomain.com</code>). Не використовуйте <code>r2.cloudflarestorage.com</code> (це приватний S3 API endpoint).</small>
         </div>
 
         <div class="settings-actions">

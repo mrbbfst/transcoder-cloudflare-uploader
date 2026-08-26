@@ -325,8 +325,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const statusSpinner = document.getElementById('status-spinner');
   const statusText = document.getElementById('status-text');
   const stopBtn = document.getElementById('stop-btn');
+  const transcodeStatusText = document.getElementById('transcode-status-text');
   const transcodeBar = document.getElementById('transcode-bar');
   const transcodePercent = document.getElementById('transcode-percent');
+  const uploadStatusText = document.getElementById('upload-status-text');
   const uploadBar = document.getElementById('upload-bar');
   const uploadPercent = document.getElementById('upload-percent');
 
@@ -476,6 +478,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (transcodePercent) transcodePercent.textContent = '0%';
     if (uploadBar) uploadBar.style.width = '0%';
     if (uploadPercent) uploadPercent.textContent = '0%';
+    if (transcodeStatusText) transcodeStatusText.textContent = '1. Транскодування відео (FFmpeg)';
+    if (uploadStatusText) uploadStatusText.textContent = '2. Завантаження файлів у Cloudflare R2';
 
     // Probe resolution if not provided
     if (!fileInfo.height && fileInfo.path) {
@@ -705,8 +709,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.api.onTranscodeProgress(({ percent, currentQuality, qualityIndex, totalQualities }) => {
     transcodeBar.style.width = `${percent}%`;
     transcodePercent.textContent = `${percent}%`;
-    if (currentQuality) {
-      statusText.textContent = `Транскодування [${qualityIndex}/${totalQualities}]: ${currentQuality} (${percent}%)`;
+    if (currentQuality && transcodeStatusText) {
+      transcodeStatusText.textContent = `1. Транскодування [${qualityIndex}/${totalQualities}]: ${currentQuality} (${percent}%)`;
       updateQueueItemStatus(currentQuality, '⚙️ Кодується', 'tag-transcoding');
     }
   });
@@ -715,8 +719,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const curPct = percent !== undefined ? percent : 0;
     uploadBar.style.width = `${curPct}%`;
     uploadPercent.textContent = `${curPct}% (${uploadedFiles} файлів у CDN)`;
-    if (stepDescription) {
-      statusText.textContent = `${stepDescription} (${uploadedFiles} файлів)...`;
+    if (stepDescription && uploadStatusText) {
+      uploadStatusText.textContent = `2. CDN Завантаження: ${stepDescription}`;
     }
   });
 

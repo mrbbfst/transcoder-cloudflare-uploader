@@ -431,11 +431,34 @@ ipcMain.on('process:stop', () => {
   }
 });
 
+let currentTranscodePct = 0;
+let currentUploadPct = 0;
+
+function updateDockProgressBar(transcodePct, uploadPct) {
+  if (transcodePct !== undefined) currentTranscodePct = transcodePct;
+  if (uploadPct !== undefined) currentUploadPct = uploadPct;
+
+  const combined = (currentTranscodePct * 0.5 + currentUploadPct * 0.5) / 100;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setProgressBar(Math.max(0.01, Math.min(1.0, combined)));
+  }
+}
+
+function clearDockProgressBar() {
+  currentTranscodePct = 0;
+  currentUploadPct = 0;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setProgressBar(-1);
+  }
+}
+
 ipcMain.on('process:start', async (event, data) => {
   const { inputPath, folderName, selectedQualities, r2Settings, keepLocal, addRandomSuffix } = data;
   const tempDir = path.join(os.tmpdir(), `transcoder-${Date.now()}`);
   activeCancelRef = { isCancelled: false };
   const cancelRef = activeCancelRef;
+  clearDockProgressBar();
+  updateDockProgressBar(0, 0);
 
   const sendStatus = (status, details = '') => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -444,6 +467,7 @@ ipcMain.on('process:start', async (event, data) => {
   };
 
   const sendError = (errorMsg) => {
+    clearDockProgressBar();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('process:error', { error: errorMsg });
     }
@@ -497,57 +521,93 @@ ipcMain.on('process:start', async (event, data) => {
     const totalExpectedFiles = selectedQualities.length * estSegments + 1;
     const uploadTasks = [];
 
-    const uploadFilesBatch = async (filesBatch, stepDescription) => {
-      for (const filePath of filesBatch) {
-        if (cancelRef.isCancelled) {
-          throw new Error('PROCESS_CANCELLED');
-        }
+    const CONCURRENCY_LIMIT = 6;
 
-        const relativePath = path.relative(tempDir, filePath).replace(/\\/g, '/');
-        const s3Key = `${targetFolder}/${relativePath}`;
+    const uploadSingleFile = async (filePath, stepDescription) => {
+      if (cancelRef.isCancelled) {
+        throw new Error('PROCESS_CANCELLED');
+      }
 
-        let contentType = mime.lookup(filePath) || 'application/octet-stream';
-        if (filePath.endsWith('.m3u8')) {
-          contentType = 'application/vnd.apple.mpegurl';
-        } else if (filePath.endsWith('.ts')) {
-          contentType = 'video/MP2T';
-        }
+      const relativePath = path.relative(tempDir, filePath).replace(/\\/g, '/');
+      const s3Key = `${targetFolder}/${relativePath}`;
 
-        const cacheControl = filePath.endsWith('.m3u8')
-          ? 'no-cache, no-store, must-revalidate'
-          : 'public, max-age=31536000, immutable';
+      let contentType = mime.lookup(filePath) || 'application/octet-stream';
+      if (filePath.endsWith('.m3u8')) {
+        contentType = 'application/vnd.apple.mpegurl';
+      } else if (filePath.endsWith('.ts')) {
+        contentType = 'video/MP2T';
+      }
 
-        const fileBuffer = fs.readFileSync(filePath);
+      const cacheControl = filePath.endsWith('.m3u8')
+        ? 'no-cache, no-store, must-revalidate'
+        : 'public, max-age=31536000, immutable';
 
-        const command = new PutObjectCommand({
-          Bucket: r2Settings.bucketName.trim(),
-          Key: s3Key,
-          Body: fileBuffer,
-          ContentType: contentType,
-          CacheControl: cacheControl
-        });
+      const fileBuffer = fs.readFileSync(filePath);
 
-        await s3Client.send(command);
+      const command = new PutObjectCommand({
+        Bucket: r2Settings.bucketName.trim(),
+        Key: s3Key,
+        Body: fileBuffer,
+        ContentType: contentType,
+        CacheControl: cacheControl
+      });
 
-        uploadedCount++;
-        totalUploadedFilesCount++;
-        const uploadPct = totalExpectedFiles > 0 ? Math.min(99, Math.round((totalUploadedFilesCount / totalExpectedFiles) * 100)) : 0;
-
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('upload:progress', {
-            uploadedFiles: totalUploadedFilesCount,
-            totalExpectedFiles,
-            percent: uploadPct,
-            stepDescription
-          });
+      // Upload with 15-second timeout and 3 retries per file
+      let attempts = 0;
+      const maxAttempts = 3;
+      while (attempts < maxAttempts) {
+        if (cancelRef.isCancelled) throw new Error('PROCESS_CANCELLED');
+        attempts++;
+        try {
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('NETWORK_TIMEOUT')), 15000)
+          );
+          await Promise.race([s3Client.send(command), timeoutPromise]);
+          break; // Success
+        } catch (err) {
+          if (cancelRef.isCancelled || err.message === 'PROCESS_CANCELLED') throw err;
+          if (attempts >= maxAttempts) {
+            console.warn(`File upload skipped after ${maxAttempts} retries: ${s3Key}`, err);
+          } else {
+            await new Promise(res => setTimeout(res, 1000 * attempts));
+          }
         }
       }
+
+      uploadedCount++;
+      totalUploadedFilesCount++;
+      const uploadPct = totalExpectedFiles > 0 ? Math.min(99, Math.round((totalUploadedFilesCount / totalExpectedFiles) * 100)) : 0;
+      updateDockProgressBar(undefined, uploadPct);
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('upload:progress', {
+          uploadedFiles: totalUploadedFilesCount,
+          totalExpectedFiles,
+          percent: uploadPct,
+          stepDescription
+        });
+      }
+    };
+
+    const uploadFilesBatch = async (filesBatch, stepDescription) => {
+      const queue = [...filesBatch];
+      const workers = Array.from({ length: Math.min(CONCURRENCY_LIMIT, queue.length) }, async () => {
+        while (queue.length > 0) {
+          if (cancelRef.isCancelled) throw new Error('PROCESS_CANCELLED');
+          const filePath = queue.shift();
+          if (filePath) {
+            await uploadSingleFile(filePath, stepDescription);
+          }
+        }
+      });
+      await Promise.all(workers);
     };
 
     // Pipelined Transcode & Upload
     for (let i = 0; i < selectedQualities.length; i++) {
       if (cancelRef.isCancelled) {
         cleanUpTempDir(tempDir);
+        clearDockProgressBar();
         mainWindow.webContents.send('process:cancelled');
         return;
       }
@@ -564,6 +624,7 @@ ipcMain.on('process:start', async (event, data) => {
 
       await transcodeQuality(inputPath, playlistPath, preset, videoDuration, (progressPercent) => {
         const overallProgress = Math.round(((i + progressPercent / 100) / totalQualities) * 100);
+        updateDockProgressBar(overallProgress, undefined);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('transcode:progress', {
             percent: overallProgress,
@@ -587,18 +648,17 @@ ipcMain.on('process:start', async (event, data) => {
       });
 
       const qualityFiles = getAllFilesRecursive(qDir);
-      sendStatus(`Паралельне завантаження в CDN: ${qKey} (${qualityFiles.length} файлів)...`);
+      sendStatus(`Завантаження в CDN: ${qKey} (${qualityFiles.length} файлів)...`);
 
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('upload:qualityState', { quality: qKey, status: 'uploading' });
       }
 
-      const uploadPromise = uploadFilesBatch(qualityFiles, `Завантажено ${qKey}`).then(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('upload:qualityState', { quality: qKey, status: 'uploaded' });
-        }
-      });
-      uploadTasks.push(uploadPromise);
+      await uploadFilesBatch(qualityFiles, `Завантажено ${qKey}`);
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('upload:qualityState', { quality: qKey, status: 'uploaded' });
+      }
     }
 
     if (cancelRef.isCancelled) {
@@ -646,6 +706,7 @@ ipcMain.on('process:start', async (event, data) => {
     }
 
     sendStatus('Завершено!', 'Всі файли успішно транскодовано та завантажено.');
+    clearDockProgressBar();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('process:complete', {
         masterUrl,
@@ -656,6 +717,7 @@ ipcMain.on('process:start', async (event, data) => {
 
   } catch (err) {
     cleanUpTempDir(tempDir);
+    clearDockProgressBar();
     if (err.message === 'PROCESS_CANCELLED' || cancelRef.isCancelled) {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('process:cancelled');
