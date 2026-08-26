@@ -316,6 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Options & Actions
   const folderNameInput = document.getElementById('folder-name-input');
   const qualityCheckboxes = document.querySelectorAll('.quality-checkbox');
+  const randomSuffixCheck = document.getElementById('random-suffix-check');
   const keepLocalCheck = document.getElementById('keep-local-check');
   const startBtn = document.getElementById('start-btn');
 
@@ -541,6 +542,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (selectFileBtn) selectFileBtn.disabled = isProcessing;
     if (changeFileBtn) changeFileBtn.disabled = isProcessing;
     if (folderNameInput) folderNameInput.disabled = isProcessing;
+    if (randomSuffixCheck) randomSuffixCheck.disabled = isProcessing;
     if (keepLocalCheck) keepLocalCheck.disabled = isProcessing;
     if (startBtn) startBtn.disabled = isProcessing || !selectedFile;
 
@@ -690,7 +692,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       folderName: folderNameInput.value.trim(),
       selectedQualities,
       r2Settings,
-      keepLocal: keepLocalCheck.checked
+      keepLocal: keepLocalCheck.checked,
+      addRandomSuffix: randomSuffixCheck ? randomSuffixCheck.checked : false
     });
   });
 

@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const ffmpeg = require('fluent-ffmpeg');
 const { S3Client, PutObjectCommand, HeadBucketCommand, ListObjectsV2Command, DeleteObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 const mime = require('mime-types');
@@ -475,7 +476,11 @@ ipcMain.on('process:start', async (event, data) => {
 
     const totalQualities = selectedQualities.length;
     const generatedVariants = [];
-    const targetFolder = (folderName && folderName.trim()) ? folderName.trim().replace(/^\/+|\/+$/g, '') : `video-${Date.now()}`;
+    let targetFolder = (folderName && folderName.trim()) ? folderName.trim().replace(/^\/+|\/+$/g, '') : `video-${Date.now()}`;
+    if (addRandomSuffix) {
+      const randomSuffix = crypto.randomBytes(10).toString('hex');
+      targetFolder = `${targetFolder}-${randomSuffix}`;
+    }
 
     const s3Client = new S3Client({
       region: 'auto',

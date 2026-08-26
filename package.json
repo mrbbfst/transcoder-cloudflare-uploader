@@ -1,6 +1,6 @@
 {
   "name": "transcoder-uploader",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Desktop app for video HLS transcoding and Cloudflare R2 uploader",
   "main": "main.js",
   "scripts": {
