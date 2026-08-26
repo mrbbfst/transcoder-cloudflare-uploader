@@ -3,8 +3,36 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const ffmpeg = require('fluent-ffmpeg');
+const ffmpegStatic = require('ffmpeg-static');
+const ffprobeStatic = require('ffprobe-static');
 const { S3Client, PutObjectCommand, HeadBucketCommand, ListObjectsV2Command, DeleteObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 const mime = require('mime-types');
+
+// Configure static FFmpeg and FFprobe paths (handling Electron ASAR unpacking)
+const fixAsarPath = (p) => p ? p.replace('app.asar', 'app.asar.unpacked') : p;
+
+let ffmpegPath = fixAsarPath(ffmpegStatic);
+let ffprobePath = ffprobeStatic ? fixAsarPath(ffprobeStatic.path) : null;
+
+// Ensure executable permissions on macOS / Linux
+if (ffmpegPath && fs.existsSync(ffmpegPath)) {
+  try { fs.chmodSync(ffmpegPath, 0o755); } catch (e) {}
+} else {
+  ffmpegPath = 'ffmpeg';
+}
+
+if (ffprobePath && fs.existsSync(ffprobePath)) {
+  try { fs.chmodSync(ffprobePath, 0o755); } catch (e) {}
+} else {
+  ffprobePath = 'ffprobe';
+}
+
+try {
+  ffmpeg.setFfmpegPath(ffmpegPath);
+  ffmpeg.setFfmprobePath(ffprobePath);
+} catch (e) {
+  console.warn('Could not set static FFmpeg/FFprobe paths, falling back to system binaries:', e);
+}
 
 let mainWindow;
 const settingsPath = path.join(app.getPath('userData'), 'r2-settings.json');
@@ -20,11 +48,13 @@ const QUALITY_PRESETS = {
 };
 
 function createWindow() {
+  const iconPath = path.join(__dirname, 'build', 'icon.png');
   mainWindow = new BrowserWindow({
     width: 960,
     height: 720,
     minWidth: 800,
     minHeight: 600,
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -628,10 +658,11 @@ function getVideoMetadata(inputPath) {
 function transcodeQuality(inputPath, outputPath, preset, durationSec, onProgress, cancelRef) {
   return new Promise((resolve, reject) => {
     const segmentFilename = path.join(path.dirname(outputPath), 'segment_%03d.ts');
+    let lastStderr = '';
 
     const cmd = ffmpeg(inputPath)
       .outputOptions([
-        `-vf scale=${preset.width}:${preset.height}:force_original_aspect_ratio=decrease,pad=${preset.width}:${preset.height}:(ow-iw)/2:(oh-ih)/2`,
+        `-vf scale='min(${preset.width},iw)':-2,format=yuv420p`,
         `-c:v libx264`,
         `-b:v ${preset.videoBitrate}`,
         `-maxrate ${parseInt(preset.videoBitrate) * 1.2}k`,
@@ -648,6 +679,9 @@ function transcodeQuality(inputPath, outputPath, preset, durationSec, onProgress
         `-hls_segment_filename ${segmentFilename}`
       ])
       .output(outputPath)
+      .on('stderr', (stderrLine) => {
+        lastStderr = stderrLine;
+      })
       .on('progress', (progress) => {
         if (cancelRef && cancelRef.isCancelled) {
           try { cmd.kill('SIGKILL'); } catch (e) {}
@@ -678,7 +712,8 @@ function transcodeQuality(inputPath, outputPath, preset, durationSec, onProgress
         if (cancelRef && cancelRef.isCancelled) {
           reject(new Error('PROCESS_CANCELLED'));
         } else {
-          reject(new Error(`FFmpeg error (${preset.name}): ${err.message}`));
+          const detail = lastStderr ? ` (${lastStderr})` : '';
+          reject(new Error(`FFmpeg error (${preset.name}): ${err.message}${detail}`));
         }
       });
 
