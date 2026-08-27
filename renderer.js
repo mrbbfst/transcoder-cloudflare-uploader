@@ -80,14 +80,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (explorerDeleteSelectedBtn) explorerDeleteSelectedBtn.disabled = true;
 
     explorerStatus.className = 'explorer-status info';
-    explorerStatus.textContent = '⏳ Завантаження вмісту R2 бакета...';
+    explorerStatus.textContent = 'Завантаження вмісту R2 бакета...';
     explorerStatus.classList.remove('hidden');
     explorerListBody.innerHTML = '';
 
     const res = await window.api.listR2Objects(prefix);
     if (!res.success) {
       explorerStatus.className = 'explorer-status error';
-      explorerStatus.textContent = `❌ ${res.error}`;
+      explorerStatus.textContent = res.error;
       return;
     }
 
@@ -120,7 +120,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const checkedCount = explorerListBody.querySelectorAll('.item-checkbox:checked').length;
     if (explorerDeleteSelectedBtn) {
       explorerDeleteSelectedBtn.disabled = checkedCount === 0;
-      explorerDeleteSelectedBtn.textContent = checkedCount > 0 ? `🗑️ Видалити обрані (${checkedCount})` : '🗑️ Видалити обрані';
+      const textSpan = explorerDeleteSelectedBtn.querySelector('span');
+      if (textSpan) {
+        textSpan.textContent = checkedCount > 0 ? `Видалити обрані (${checkedCount})` : 'Видалити обрані';
+      }
     }
   }
 
@@ -146,9 +149,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (confirm(`Ви дійсно бажаєте видалити ${items.length} обраних елементів?`)) {
         explorerDeleteSelectedBtn.disabled = true;
-        explorerDeleteSelectedBtn.textContent = '⏳ Видалення...';
+        const textSpan = explorerDeleteSelectedBtn.querySelector('span');
+        if (textSpan) textSpan.textContent = 'Видалення...';
         explorerStatus.className = 'explorer-status info';
-        explorerStatus.textContent = `⏳ Видалення ${items.length} обраних елементів з R2 бакета... (зачекайте)`;
+        explorerStatus.textContent = `Видалення ${items.length} обраних елементів з R2 бакета... (зачекайте)`;
         explorerStatus.classList.remove('hidden');
         disableExplorerControls(true);
 
@@ -185,6 +189,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderExplorerList(folders, files, prefix) {
     let html = '';
 
+    const folderSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" stroke-width="2" style="vertical-align: middle; margin-right: 6px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
+    const playSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" stroke-width="2" style="vertical-align: middle; margin-right: 6px;"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`;
+    const fileSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 6px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+    const trashSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+    const copySvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+
     // Up parent directory row
     if (prefix) {
       const parts = prefix.split('/').filter(Boolean);
@@ -193,7 +203,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       html += `
         <tr class="explorer-row folder-row" data-prefix="${parentPrefix}">
           <td></td>
-          <td>📁 <strong>.. (на рівень вище)</strong></td>
+          <td>${folderSvg}<strong>.. (на рівень вище)</strong></td>
           <td>Папка</td>
           <td>-</td>
           <td>-</td>
@@ -215,12 +225,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       html += `
         <tr class="explorer-row folder-row" data-prefix="${f.prefix}">
           <td style="text-align: center;"><input type="checkbox" class="item-checkbox" data-key="${escapeHtml(f.prefix)}" data-is-folder="true" /></td>
-          <td>📁 <strong>${escapeHtml(f.name)}</strong></td>
+          <td>${folderSvg}<strong>${escapeHtml(f.name)}</strong></td>
           <td>Папка HLS</td>
           <td>-</td>
           <td>-</td>
           <td class="text-right">
-            <button class="btn-xs btn-danger delete-folder-btn" data-prefix="${f.prefix}" data-name="${escapeHtml(f.name)}">🗑️ Видалити</button>
+            <button class="btn-xs btn-danger delete-folder-btn" data-prefix="${f.prefix}" data-name="${escapeHtml(f.name)}" style="display: inline-flex; align-items: center; gap: 4px;">
+              ${trashSvg}
+              <span>Видалити</span>
+            </button>
           </td>
         </tr>
       `;
@@ -228,20 +241,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Render files
     files.forEach(file => {
-      const icon = file.isM3u8 ? '🎬' : (file.name.endsWith('.ts') ? '🎥' : '📄');
+      const iconSvg = file.isM3u8 ? playSvg : fileSvg;
       const formattedSize = formatBytes(file.size);
       const formattedDate = file.lastModified ? new Date(file.lastModified).toLocaleString('uk-UA') : '-';
 
       html += `
         <tr class="explorer-row file-row">
           <td style="text-align: center;"><input type="checkbox" class="item-checkbox" data-key="${escapeHtml(file.key)}" data-is-folder="false" /></td>
-          <td>${icon} ${escapeHtml(file.name)}</td>
+          <td>${iconSvg}${escapeHtml(file.name)}</td>
           <td>${file.isM3u8 ? '<strong>M3U8 Playlist</strong>' : 'Файл'}</td>
           <td>${formattedSize}</td>
           <td>${formattedDate}</td>
           <td class="text-right">
-            ${file.cdnUrl ? `<button class="btn-xs btn-success copy-cdn-btn" data-url="${escapeHtml(file.cdnUrl)}">📋 CDN URL</button>` : ''}
-            <button class="btn-xs btn-danger delete-file-btn" data-key="${escapeHtml(file.key)}" data-name="${escapeHtml(file.name)}">🗑️</button>
+            ${file.cdnUrl ? `<button class="btn-xs btn-success copy-cdn-btn" data-url="${escapeHtml(file.cdnUrl)}" style="display: inline-flex; align-items: center; gap: 4px;">${copySvg}<span>CDN URL</span></button>` : ''}
+            <button class="btn-xs btn-danger delete-file-btn" data-key="${escapeHtml(file.key)}" data-name="${escapeHtml(file.name)}" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px;">${trashSvg}</button>
           </td>
         </tr>
       `;
@@ -268,10 +281,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.stopPropagation();
         const url = btn.getAttribute('data-url');
         navigator.clipboard.writeText(url);
-        const originalText = btn.textContent;
-        btn.textContent = '✓ Скопійовано!';
+        const span = btn.querySelector('span');
+        if (span) span.textContent = 'Скопійовано!';
         setTimeout(() => {
-          btn.textContent = originalText;
+          if (span) span.textContent = 'CDN URL';
         }, 2000);
       });
     });
@@ -283,9 +296,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const name = btn.getAttribute('data-name');
         if (confirm(`Ви впевнені, що хочете видалити файл "${name}"?`)) {
           btn.disabled = true;
-          btn.textContent = '⏳...';
           explorerStatus.className = 'explorer-status info';
-          explorerStatus.textContent = `⏳ Видалення файла "${name}" з R2...`;
+          explorerStatus.textContent = `Видалення файла "${name}" з R2...`;
           explorerStatus.classList.remove('hidden');
           disableExplorerControls(true);
 
@@ -295,7 +307,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           } else {
             alert(`Помилка видалення: ${res.error}`);
             btn.disabled = false;
-            btn.textContent = '🗑️';
             disableExplorerControls(false);
           }
         }
@@ -309,9 +320,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const name = btn.getAttribute('data-name');
         if (confirm(`Ви дійсно хочете повністю видалити папку "${name}" та всі її HLS файли?`)) {
           btn.disabled = true;
-          btn.textContent = '⏳ Видалення...';
+          const span = btn.querySelector('span');
+          if (span) span.textContent = 'Видалення...';
           explorerStatus.className = 'explorer-status info';
-          explorerStatus.textContent = `⏳ Видалення папки "${name}" та усіх її HLS файлів з R2... (зачекайте)`;
+          explorerStatus.textContent = `Видалення папки "${name}" та усіх її HLS файлів з R2... (зачекайте)`;
           explorerStatus.classList.remove('hidden');
           disableExplorerControls(true);
 
@@ -321,7 +333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           } else {
             alert(`Помилка видалення папки: ${res.error}`);
             btn.disabled = false;
-            btn.textContent = '🗑️ Видалити';
+            if (span) span.textContent = 'Видалити';
             disableExplorerControls(false);
           }
         }
@@ -528,21 +540,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Dynamic Start Button Label & Insufficient Balance Validation
     if (startBtn) {
+      const startBtnSpan = document.getElementById('start-btn-text') || startBtn;
       const hasQualities = activeQualities.length > 0;
       if (isCloud) {
         if (currentUserBalanceUsd !== null && selectedFile && currentUserBalanceUsd < totalCostUsd) {
           startBtn.disabled = true;
-          startBtn.textContent = `⚠️ Недостатньо коштів ($${totalCostUsd.toFixed(2)} | Баланс: $${currentUserBalanceUsd.toFixed(2)})`;
+          startBtnSpan.textContent = `Недостатньо коштів ($${totalCostUsd.toFixed(2)} | Баланс: $${currentUserBalanceUsd.toFixed(2)})`;
         } else if (selectedFile) {
           startBtn.disabled = !hasQualities;
-          startBtn.textContent = `🚀 Транскодувати за $${totalCostUsd.toFixed(2)} та завантажити в S3 сховище`;
+          startBtnSpan.textContent = `Транскодувати за $${totalCostUsd.toFixed(2)} та завантажити в S3 сховище`;
         } else {
           startBtn.disabled = true;
-          startBtn.textContent = '🚀 Транскодувати в Хмарі та завантажити в S3 сховище';
+          startBtnSpan.textContent = 'Транскодувати в Хмарі та завантажити в S3 сховище';
         }
       } else {
         startBtn.disabled = !(selectedFile && hasQualities);
-        startBtn.textContent = '🚀 Розпочати транскодування та завантаження';
+        startBtnSpan.textContent = 'Розпочати транскодування та завантаження';
       }
     }
 
@@ -632,8 +645,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const user = await res.json();
         currentUserBalanceUsd = user.balanceUsd !== undefined ? user.balanceUsd : 0;
         const formattedBal = user.formattedBalance || `$${(currentUserBalanceUsd).toFixed(2)}`;
-        if (tgUserInfo) tgUserInfo.textContent = `👤 @${user.username || user.firstName || user.telegramId} | 💳 Баланс: ${formattedBal}`;
-        if (headerBalanceBadge) headerBalanceBadge.textContent = `💳 ${formattedBal}`;
+        if (tgUserInfo) tgUserInfo.textContent = `@${user.username || user.firstName || user.telegramId} | Баланс: ${formattedBal}`;
+        if (headerBalanceBadge) {
+          const balText = headerBalanceBadge.querySelector('#header-balance-text');
+          if (balText) balText.textContent = formattedBal;
+        }
         showTgAuthState('logged');
         updateCreditCalculator();
       } else {
@@ -739,10 +755,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (status && status.isAvailable) {
         const typeText = status.isSystem ? 'Системний (Homebrew / System PATH)' : 'Автономний (вбудований бінарник)';
         ffmpegStatusBox.className = 'test-msg success margin-top';
-        ffmpegStatusBox.textContent = `✅ FFmpeg підключено (${typeText}): ${status.ffmpegPath}`;
+        ffmpegStatusBox.textContent = `FFmpeg підключено (${typeText}): ${status.ffmpegPath}`;
       } else {
         ffmpegStatusBox.className = 'test-msg error margin-top';
-        ffmpegStatusBox.textContent = '❌ Бінарник FFmpeg не знайдено.';
+        ffmpegStatusBox.textContent = 'Бінарник FFmpeg не знайдено.';
       }
     }
   }

@@ -86,7 +86,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 960,
     height: 720,
-    minWidth: 800,
+    minWidth: 960,
     minHeight: 600,
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     titleBarStyle: 'hidden',
