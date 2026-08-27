@@ -502,22 +502,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       totalCpuFactor += (cpuWorkloadFactors[q] || 0.5);
     }
 
-    // Network transfer & container startup overhead (~15s + 1s per 15MB transfer)
-    const transferOverheadSec = Math.ceil(15 + (fileSizeMb / 15));
-
-    // End-to-end GPU processing vs local CPU software encoding
-    const pureGpuEncodeSec = Math.ceil((durationSec * totalGpuFactor) / 2.2);
-    const estimatedGpuSec = Math.max(30, transferOverheadSec + pureGpuEncodeSec);
-    const estimatedCpuSec = Math.max(60, Math.ceil(durationSec * totalCpuFactor * 1.8));
-
-    function formatTimeDuration(seconds) {
-      if (seconds < 60) return `~${seconds} сек`;
-      const mins = Math.floor(seconds / 60);
-      const secs = seconds % 60;
-      if (mins < 60) return secs > 0 ? `~${mins} хв ${secs} сек` : `~${mins} хв`;
-      const hrs = (mins / 60).toFixed(1);
-      return `~${hrs} год`;
+    // Video Duration Formatter (MM:SS or HH:MM:SS)
+    function formatExactDuration(seconds) {
+      const s = Math.round(seconds);
+      const hrs = Math.floor(s / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      if (hrs > 0) {
+        return `${hrs} год ${mins} хв ${secs} сек`;
+      }
+      return `${mins} хв ${secs} сек`;
     }
+
+    const videoDurFormatted = formatExactDuration(durationSec);
+
+    // Parallel NVENC GPU hardware encoding vs Local CPU software encoding
+    const pureGpuEncodeSec = Math.ceil(durationSec / 6.5);
+    const estimatedGpuSec = Math.max(25, transferOverheadSec + pureGpuEncodeSec);
+    const estimatedCpuSec = Math.max(60, Math.ceil(durationSec * totalCpuFactor * 1.8));
 
     const gpuFormatted = formatTimeDuration(estimatedGpuSec);
     const cpuFormatted = formatTimeDuration(estimatedCpuSec);
@@ -526,7 +528,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (calcCreditAmount) calcCreditAmount.textContent = `$${totalCostUsd.toFixed(2)}`;
     if (calcGpuTime) calcGpuTime.textContent = gpuFormatted;
     if (calcCpuTime) calcCpuTime.textContent = cpuFormatted;
-    if (calcCreditSub) calcCreditSub.textContent = `(тривалість ~${minutes} хв, розмір ${fileSizeMb.toFixed(0)} MB, якостей: ${activeQualities.length})`;
+    const calcSpeedRatio = document.getElementById('calc-speed-ratio');
+    if (calcSpeedRatio) calcSpeedRatio.textContent = `${speedRatio}х`;
+    if (calcCreditSub) calcCreditSub.textContent = `(🎬 Тривалість: ${videoDurFormatted} | Розмір: ${fileSizeMb.toFixed(0)} MB | Якостей: ${activeQualities.length})`;
   }
 
   function showTgAuthState(state) {
