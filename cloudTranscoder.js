@@ -30,6 +30,31 @@ class BackendProxyProvider extends BaseCloudProvider {
     this.authToken = (authToken || '').trim();
   }
 
+  async checkBalance(payload) {
+    if (!this.proxyUrl || !this.authToken) return { allowed: true };
+
+    const response = await fetch(`${this.proxyUrl}/api/transcode/check`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.authToken}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      let msg = errText;
+      try {
+        const jsonErr = JSON.parse(errText);
+        msg = jsonErr.error || errText;
+      } catch (e) {}
+      throw new Error(`Помилка підтвердження коштів (${response.status}): ${msg}`);
+    }
+
+    return await response.json();
+  }
+
   async startJob(payload) {
     if (!this.proxyUrl) {
       throw new Error('Помилка конфігурації проксі-сервера!');

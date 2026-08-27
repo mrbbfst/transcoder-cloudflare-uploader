@@ -98,6 +98,13 @@ function createWindow() {
     }
   });
 
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+    const lvlStr = levels[level] || 'LOG';
+    const file = sourceId ? path.basename(sourceId) : 'renderer.js';
+    console.log(`[Renderer ${lvlStr}] ${message} (${file}:${line})`);
+  });
+
   mainWindow.loadFile('index.html');
 }
 
@@ -448,6 +455,10 @@ ipcMain.handle('video:getResolution', async (event, filePath) => {
   }
 });
 
+ipcMain.handle('app:getVersion', () => {
+  return app.getVersion();
+});
+
 // --- Cancellation & Transcoding Process ---
 ipcMain.on('process:stop', () => {
   activeCancelRef.isCancelled = true;
@@ -531,35 +542,6 @@ ipcMain.on('process:start', async (event, data) => {
         targetFolder = `${targetFolder}-${crypto.randomBytes(10).toString('hex')}`;
       }
 
-      const tempR2Key = `temp-inputs/${Date.now()}_${path.basename(inputPath)}`;
-      sendStatus('📤 Завантаження відео в R2 для обробки на GPU...');
-      updateDockProgressBar(10, 0);
-
-      const fileStream = fs.createReadStream(inputPath);
-      const r2Upload = new Upload({
-        client: s3Client,
-        params: {
-          Bucket: r2Settings.bucketName.trim(),
-          Key: tempR2Key,
-          Body: fileStream,
-          ContentType: mime.lookup(inputPath) || 'video/mp4'
-        },
-        queueSize: 4,
-        partSize: 8 * 1024 * 1024 // 8 MB multipart chunks
-      });
-
-      r2Upload.on('httpUploadProgress', (progress) => {
-        if (progress.total) {
-          const pct = Math.round((progress.loaded / progress.total) * 15) + 10;
-          updateDockProgressBar(pct, 0);
-        }
-      });
-
-      await r2Upload.done();
-
-      sendStatus('🚀 Ініціалізація Хмарного GPU воркера...');
-      updateDockProgressBar(25, 0);
-
       let durationSec = inputDurationSec;
       if (!durationSec) {
         const meta = await getVideoResolution(inputPath);
@@ -567,84 +549,129 @@ ipcMain.on('process:start', async (event, data) => {
       }
 
       const provider = createCloudProvider(cloudSettings || {});
-      const jobId = await provider.startJob({
-        input_r2_key: tempR2Key,
-        target_folder: targetFolder,
-        selected_qualities: selectedQualities,
+
+      // 1. PRE-CHECK BALANCE BEFORE UPLOADING ANY BYTES TO R2
+      sendStatus('💳 Перевірка наявності коштів на балансі...');
+      await provider.checkBalance({
         duration_sec: durationSec || 60,
-        r2_settings: r2Settings,
-        add_random_suffix: false
+        selected_qualities: selectedQualities
       });
 
-      let isFinished = false;
-      let currentProgress = 25;
-      let uploadProgress = 0;
-      const totalEstimatedSec = Math.max(30, Math.ceil((durationSec || 60) * selectedQualities.length * 0.3));
+      const tempR2Key = `temp-inputs/${Date.now()}_${path.basename(inputPath)}`;
 
-      while (!isFinished) {
-        if (cancelRef.isCancelled) {
-          await provider.cancelJob(jobId);
-          try { await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key })); } catch (e) {}
-          clearDockProgressBar();
-          mainWindow.webContents.send('process:cancelled');
-          return;
-        }
+      try {
+        sendStatus('📤 Завантаження відео в R2 для обробки на GPU...');
+        updateDockProgressBar(10, 0);
 
-        const statusRes = await provider.getJobStatus(jobId);
-        const state = statusRes.status || statusRes.state;
+        const fileStream = fs.createReadStream(inputPath);
+        const r2Upload = new Upload({
+          client: s3Client,
+          params: {
+            Bucket: r2Settings.bucketName.trim(),
+            Key: tempR2Key,
+            Body: fileStream,
+            ContentType: mime.lookup(inputPath) || 'video/mp4'
+          },
+          queueSize: 4,
+          partSize: 8 * 1024 * 1024 // 8 MB multipart chunks
+        });
 
-        if (state === 'IN_QUEUE') {
-          sendStatus('⏳ В черзі Хмарного GPU сервера...');
-          currentProgress = Math.min(35, currentProgress + 2);
-          updateDockProgressBar(currentProgress, 10);
-        } else if (state === 'IN_PROGRESS') {
-          currentProgress = Math.min(92, currentProgress + Math.max(1, Math.round(60 / Math.max(5, totalEstimatedSec / 2.5))));
-          uploadProgress = Math.min(85, Math.round((currentProgress / 92) * 85));
-
-          sendStatus(`⚡ Хмарне GPU транскодування (${currentProgress}%)...`);
-          updateDockProgressBar(currentProgress, uploadProgress);
-
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('transcode:progress', {
-              percent: currentProgress,
-              currentQuality: 'Cloud GPU',
-              qualityIndex: 1,
-              totalQualities: selectedQualities.length
-            });
-
-            mainWindow.webContents.send('upload:progress', {
-              uploadedFiles: selectedQualities.length,
-              percent: uploadProgress,
-              stepDescription: 'Обробка та збереження HLS сегментів у CDN...'
-            });
+        r2Upload.on('httpUploadProgress', (progress) => {
+          if (progress.total) {
+            const pct = Math.round((progress.loaded / progress.total) * 15) + 10;
+            updateDockProgressBar(pct, 0);
           }
-        } else if (state === 'COMPLETED') {
-          isFinished = true;
-          currentProgress = 100;
-          uploadProgress = 100;
+        });
 
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('transcode:progress', {
-              percent: 100,
-              currentQuality: 'Cloud GPU',
-              qualityIndex: selectedQualities.length,
-              totalQualities: selectedQualities.length
-            });
+        await r2Upload.done();
 
-            mainWindow.webContents.send('upload:progress', {
-              uploadedFiles: selectedQualities.length,
-              percent: 100,
-              stepDescription: 'Усі файли завантажено у CDN!'
-            });
+        sendStatus('🚀 Ініціалізація Хмарного GPU воркера...');
+        updateDockProgressBar(25, 0);
+
+        const jobId = await provider.startJob({
+          input_r2_key: tempR2Key,
+          target_folder: targetFolder,
+          selected_qualities: selectedQualities,
+          duration_sec: durationSec || 60,
+          r2_settings: r2Settings,
+          add_random_suffix: false
+        });
+
+        let isFinished = false;
+        let currentProgress = 25;
+        let uploadProgress = 0;
+        const totalEstimatedSec = Math.max(30, Math.ceil((durationSec || 60) * selectedQualities.length * 0.3));
+
+        while (!isFinished) {
+          if (cancelRef.isCancelled) {
+            await provider.cancelJob(jobId);
+            try { await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key })); } catch (e) {}
+            clearDockProgressBar();
+            mainWindow.webContents.send('process:cancelled');
+            return;
           }
 
-          try { await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key })); } catch (e) {}
-        } else if (state === 'FAILED') {
-          try { await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key })); } catch (e) {}
-          throw new Error(`Хмарне транскодування завершилось помилкою: ${statusRes.error || 'Cloud Job Failed'}`);
-        }
+          const statusRes = await provider.getJobStatus(jobId);
+          const state = statusRes.status || statusRes.state;
 
-        await new Promise(res => setTimeout(res, 2000));
+          if (state === 'IN_QUEUE') {
+            sendStatus('⏳ В черзі Хмарного GPU сервера...');
+            currentProgress = Math.min(35, currentProgress + 2);
+            updateDockProgressBar(currentProgress, 10);
+          } else if (state === 'IN_PROGRESS') {
+            currentProgress = Math.min(92, currentProgress + Math.max(1, Math.round(60 / Math.max(5, totalEstimatedSec / 2.5))));
+            uploadProgress = Math.min(85, Math.round((currentProgress / 92) * 85));
+
+            sendStatus(`⚡ Хмарне GPU транскодування (${currentProgress}%)...`);
+            updateDockProgressBar(currentProgress, uploadProgress);
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('transcode:progress', {
+                percent: currentProgress,
+                currentQuality: 'Cloud GPU',
+                qualityIndex: 1,
+                totalQualities: selectedQualities.length
+              });
+
+              mainWindow.webContents.send('upload:progress', {
+                uploadedFiles: selectedQualities.length,
+                percent: uploadProgress,
+                stepDescription: 'Обробка та збереження HLS сегментів у CDN...'
+              });
+            }
+          } else if (state === 'COMPLETED') {
+            isFinished = true;
+            currentProgress = 100;
+            uploadProgress = 100;
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('transcode:progress', {
+                percent: 100,
+                currentQuality: 'Cloud GPU',
+                qualityIndex: selectedQualities.length,
+                totalQualities: selectedQualities.length
+              });
+
+              mainWindow.webContents.send('upload:progress', {
+                uploadedFiles: selectedQualities.length,
+                percent: 100,
+                stepDescription: 'Усі файли завантажено у CDN!'
+              });
+            }
+
+            try { await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key })); } catch (e) {}
+          } else if (state === 'FAILED') {
+            try { await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key })); } catch (e) {}
+            throw new Error(`Хмарне транскодування завершилось помилкою: ${statusRes.error || 'Cloud Job Failed'}`);
+          }
+
+          await new Promise(res => setTimeout(res, 2000));
+        }
+      } catch (cloudErr) {
+        try {
+          await s3Client.send(new DeleteObjectCommand({ Bucket: r2Settings.bucketName.trim(), Key: tempR2Key }));
+        } catch (e) {}
+        throw cloudErr;
       }
 
       let domain = r2Settings.publicDomain.trim().replace(/\/+$/, '');

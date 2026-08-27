@@ -14,6 +14,7 @@
         <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
       </svg>
       <span>HLS Transcoder & Cloudflare R2</span>
+      <span class="app-version-tag app-version-val"></span>
     </div>
     <div class="header-nav">
       <button id="nav-transcode-btn" class="nav-btn active">🎬 Транскодер</button>
@@ -57,13 +58,13 @@
           <div class="qualities-grid">
             <label class="checkbox-label">
               <input type="radio" name="transcode-mode" value="local" checked />
-              <span class="q-title">💻 Локальне CPU</span>
-              <span class="q-desc">Безкоштовно • ~3-5 хв</span>
+              <span class="q-title">💻 Локальний Транскодинг</span>
+              <span class="q-desc">Безкоштовно</span>
             </label>
             <label class="checkbox-label">
               <input type="radio" name="transcode-mode" value="cloud" />
-              <span class="q-title">⚡ Хмарний GPU (NVIDIA)</span>
-              <span class="q-desc">Супершвидко • ~15-30 сек</span>
+              <span class="q-title">⚡ Cloud Транскодинг</span>
+              <span class="q-desc">Супершвидко</span>
             </label>
           </div>
         </div>
@@ -80,28 +81,28 @@
               <input type="checkbox" value="1080p" class="quality-checkbox" checked />
               <span class="custom-checkbox"></span>
               <span class="q-title">1080p (Full HD)</span>
-              <span class="q-desc">5000 kbps</span>
+              <span class="q-desc"><span class="q-desc-text">5000 kbps</span> <span class="q-cost-badge" data-quality="1080p"></span></span>
             </label>
 
             <label class="checkbox-label">
               <input type="checkbox" value="720p" class="quality-checkbox" checked />
               <span class="custom-checkbox"></span>
               <span class="q-title">720p (HD)</span>
-              <span class="q-desc">2800 kbps</span>
+              <span class="q-desc"><span class="q-desc-text">2800 kbps</span> <span class="q-cost-badge" data-quality="720p"></span></span>
             </label>
 
             <label class="checkbox-label">
               <input type="checkbox" value="480p" class="quality-checkbox" checked />
               <span class="custom-checkbox"></span>
               <span class="q-title">480p (SD)</span>
-              <span class="q-desc">1400 kbps</span>
+              <span class="q-desc"><span class="q-desc-text">1400 kbps</span> <span class="q-cost-badge" data-quality="480p"></span></span>
             </label>
 
             <label class="checkbox-label">
               <input type="checkbox" value="360p" class="quality-checkbox" checked />
               <span class="custom-checkbox"></span>
               <span class="q-title">360p (Mobile)</span>
-              <span class="q-desc">800 kbps</span>
+              <span class="q-desc"><span class="q-desc-text">800 kbps</span> <span class="q-cost-badge" data-quality="360p"></span></span>
             </label>
           </div>
         </div>
@@ -124,13 +125,12 @@
 
         <div id="cloud-credit-calc-box" class="cloud-credit-calc-box hidden">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 13px; font-weight: 600; color: var(--accent-color);">⚡ Хмарне GPU: <span id="calc-credit-amount">$0.05</span></span>
+            <span style="font-size: 13px; font-weight: 600; color: var(--accent-color);">⚡ Хмарне GPU: <span id="calc-credit-amount">$0.00</span></span>
             <span id="view-rates-link" class="btn-link" style="font-size: 12px; cursor: pointer;">📊 Тарифна сітка</span>
           </div>
           <div style="font-size: 12px; color: var(--text-main); margin-top: 4px;">
-            ⏱️ Час обробки на GPU: <strong id="calc-gpu-time">~2 хв 30 сек</strong> <span style="color: #22c55e;">(у <span id="calc-speed-ratio">18х</span> швидше за локальне CPU: <span id="calc-cpu-time">~45 хв</span>)</span>
+            ⏱️ Очікуваний час обробки: <strong id="calc-gpu-time">~0 сек</strong> <span style="color: #22c55e;">(у <span id="calc-speed-ratio">--</span> швидше за локальне CPU: <span id="calc-cpu-time">--</span>)</span>
           </div>
-          <small id="calc-credit-sub" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">(тривалість ~0 хв, обрано якостей: 4)</small>
         </div>
 
         <button id="start-btn" class="btn-primary btn-lg" disabled>
@@ -308,6 +308,10 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="app-footer">
+    <span>HLS Transcoder <span class="app-version-val"></span> • Розроблено за підтримки <a id="affi-blog-link" class="affi-link" href="#">affi.blog</a></span>
   </div>
 
   <script src="renderer.js"></script>

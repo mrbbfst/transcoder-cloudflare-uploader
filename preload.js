@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteR2Object: (data) => ipcRenderer.invoke('r2:deleteObject', data),
   deleteBatchR2Objects: (items) => ipcRenderer.invoke('r2:deleteBatch', items),
   uploadAnyR2File: (prefix) => ipcRenderer.invoke('r2:uploadAnyFile', prefix),
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   
   onTranscodeProgress: (callback) => {
     const subscription = (event, data) => callback(data);

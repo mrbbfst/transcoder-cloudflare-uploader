@@ -1,3 +1,14 @@
+window.onerror = function(msg, url, lineNo, columnNo, error) {
+  const fileName = url ? url.split('/').pop() : 'renderer.js';
+  console.error(`🔴 UNCAUGHT RENDERER ERROR: ${msg} (${fileName}:${lineNo}:${columnNo})`, error);
+  alert(`🔴 Помилка в інтерфейсі (L${lineNo}):\n${msg}`);
+  return false;
+};
+
+window.onunhandledrejection = function(event) {
+  console.error(`🔴 UNHANDLED PROMISE REJECTION:`, event.reason);
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
   // Navigation elements
   const navTranscodeBtn = document.getElementById('nav-transcode-btn');
@@ -15,6 +26,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const explorerListBody = document.getElementById('explorer-list-body');
   const explorerStatus = document.getElementById('explorer-status');
   const selectAllExplorer = document.getElementById('select-all-explorer');
+
+  // Form & Quality Controls
+  const qualityCheckboxes = document.querySelectorAll('.quality-checkbox');
+  const startBtn = document.getElementById('start-btn');
 
   let currentExplorerPrefix = '';
 
@@ -38,6 +53,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   navTranscodeBtn.addEventListener('click', () => setActiveTab('transcode'));
   navExplorerBtn.addEventListener('click', () => setActiveTab('explorer'));
   navSettingsBtn.addEventListener('click', () => setActiveTab('settings'));
+
+  const affiBlogLink = document.getElementById('affi-blog-link');
+  if (affiBlogLink) {
+    affiBlogLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.open('https://affi.blog', '_blank');
+    });
+  }
+
+  try {
+    const version = await window.api.getAppVersion();
+    if (version) {
+      document.querySelectorAll('.app-version-val').forEach(el => {
+        el.textContent = `v${version}`;
+      });
+    }
+  } catch (e) {}
 
   // --- Explorer Logic ---
   async function loadExplorer(prefix = '') {
@@ -317,10 +349,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Options & Actions
   const folderNameInput = document.getElementById('folder-name-input');
-  const qualityCheckboxes = document.querySelectorAll('.quality-checkbox');
   const randomSuffixCheck = document.getElementById('random-suffix-check');
   const keepLocalCheck = document.getElementById('keep-local-check');
-  const startBtn = document.getElementById('start-btn');
 
   // Progress Section
   const progressCard = document.getElementById('progress-card');
@@ -445,6 +475,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const calcGpuTime = document.getElementById('calc-gpu-time');
   const calcCpuTime = document.getElementById('calc-cpu-time');
+  const calcSpeedRatio = document.getElementById('calc-speed-ratio');
   const viewRatesLink = document.getElementById('view-rates-link');
 
   if (viewRatesLink) {
@@ -468,17 +499,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updateCreditCalculator() {
     const modeRadio = document.querySelector('input[name="transcode-mode"]:checked');
     const isCloud = modeRadio && modeRadio.value === 'cloud';
-
-    if (!isCloud || !selectedFile) {
-      if (cloudCreditCalcBox) cloudCreditCalcBox.classList.add('hidden');
-      return;
-    }
-
-    if (cloudCreditCalcBox) cloudCreditCalcBox.classList.remove('hidden');
-
-    const durationSec = selectedFile.duration || 60;
-    const minutes = Math.max(1, Math.ceil(durationSec / 60));
     const activeQualities = Array.from(qualityCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+
+    const durationSec = (selectedFile && selectedFile.duration) ? selectedFile.duration : 60;
+    const minutes = Math.max(1, Math.ceil(durationSec / 60));
 
     let ratePerMin = 0;
     for (const q of activeQualities) {
@@ -487,6 +511,47 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const calculated = Number((minutes * ratePerMin).toFixed(2));
     const totalCostUsd = Math.max(serverPricing.minCostUsd || 0.05, calculated);
+
+    // Dynamic cost badges for quality checkboxes
+    document.querySelectorAll('.q-cost-badge').forEach(badge => {
+      const q = badge.getAttribute('data-quality');
+      if (isCloud) {
+        const qRate = (serverPricing.ratesPerMinuteUsd && serverPricing.ratesPerMinuteUsd[q]) || 0.005;
+        const qCost = selectedFile ? (minutes * qRate).toFixed(2) : (qRate * 1).toFixed(3);
+        badge.textContent = selectedFile ? `+$${qCost}` : `+$${qRate.toFixed(3)}/хв`;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.textContent = '';
+        badge.style.display = 'none';
+      }
+    });
+
+    // Dynamic Start Button Label & Insufficient Balance Validation
+    if (startBtn) {
+      const hasQualities = activeQualities.length > 0;
+      if (isCloud) {
+        if (currentUserBalanceUsd !== null && selectedFile && currentUserBalanceUsd < totalCostUsd) {
+          startBtn.disabled = true;
+          startBtn.textContent = `⚠️ Недостатньо коштів ($${totalCostUsd.toFixed(2)} | Баланс: $${currentUserBalanceUsd.toFixed(2)})`;
+        } else if (selectedFile) {
+          startBtn.disabled = !hasQualities;
+          startBtn.textContent = `🚀 Транскодувати за $${totalCostUsd.toFixed(2)} та завантажити в S3 сховище`;
+        } else {
+          startBtn.disabled = true;
+          startBtn.textContent = '🚀 Транскодувати в Хмарі та завантажити в S3 сховище';
+        }
+      } else {
+        startBtn.disabled = !(selectedFile && hasQualities);
+        startBtn.textContent = '🚀 Розпочати транскодування та завантаження';
+      }
+    }
+
+    if (!isCloud || !selectedFile) {
+      if (cloudCreditCalcBox) cloudCreditCalcBox.classList.add('hidden');
+      return;
+    }
+
+    if (cloudCreditCalcBox) cloudCreditCalcBox.classList.remove('hidden');
 
     // Dynamic Time Estimator based on File Size, Duration, and Selected Qualities
     const fileSizeMb = selectedFile.size ? (selectedFile.size / (1024 * 1024)) : 100;
@@ -517,9 +582,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     const videoDurFormatted = formatExactDuration(durationSec);
 
     // Parallel NVENC GPU hardware encoding vs Local CPU software encoding
+    const transferOverheadSec = Math.ceil(15 + (fileSizeMb / 15));
     const pureGpuEncodeSec = Math.ceil(durationSec / 6.5);
     const estimatedGpuSec = Math.max(25, transferOverheadSec + pureGpuEncodeSec);
     const estimatedCpuSec = Math.max(60, Math.ceil(durationSec * totalCpuFactor * 1.8));
+
+    function formatTimeDuration(seconds) {
+      if (seconds < 60) return `~${seconds} сек`;
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      if (mins < 60) return secs > 0 ? `~${mins} хв ${secs} сек` : `~${mins} хв`;
+      const hrs = (mins / 60).toFixed(1);
+      return `~${hrs} год`;
+    }
 
     const gpuFormatted = formatTimeDuration(estimatedGpuSec);
     const cpuFormatted = formatTimeDuration(estimatedCpuSec);
@@ -528,10 +603,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (calcCreditAmount) calcCreditAmount.textContent = `$${totalCostUsd.toFixed(2)}`;
     if (calcGpuTime) calcGpuTime.textContent = gpuFormatted;
     if (calcCpuTime) calcCpuTime.textContent = cpuFormatted;
-    const calcSpeedRatio = document.getElementById('calc-speed-ratio');
     if (calcSpeedRatio) calcSpeedRatio.textContent = `${speedRatio}х`;
-    if (calcCreditSub) calcCreditSub.textContent = `(🎬 Тривалість: ${videoDurFormatted} | Розмір: ${fileSizeMb.toFixed(0)} MB | Якостей: ${activeQualities.length})`;
   }
+
+  let currentUserBalanceUsd = null;
 
   function showTgAuthState(state) {
     if (tgAuthUnlogged) tgAuthUnlogged.classList.toggle('hidden', state !== 'unlogged');
@@ -544,6 +619,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function checkTelegramAuth() {
     if (!tgAuthToken) {
+      currentUserBalanceUsd = null;
       showTgAuthState('unlogged');
       return;
     }
@@ -554,12 +630,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       if (res.ok) {
         const user = await res.json();
-        const formattedBal = user.formattedBalance || `$${(user.balanceUsd || 0).toFixed(2)}`;
+        currentUserBalanceUsd = user.balanceUsd !== undefined ? user.balanceUsd : 0;
+        const formattedBal = user.formattedBalance || `$${(currentUserBalanceUsd).toFixed(2)}`;
         if (tgUserInfo) tgUserInfo.textContent = `👤 @${user.username || user.firstName || user.telegramId} | 💳 Баланс: ${formattedBal}`;
         if (headerBalanceBadge) headerBalanceBadge.textContent = `💳 ${formattedBal}`;
         showTgAuthState('logged');
+        updateCreditCalculator();
       } else {
         tgAuthToken = '';
+        currentUserBalanceUsd = null;
         showTgAuthState('unlogged');
       }
     } catch (err) {
@@ -753,20 +832,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (transcodeStatusText) transcodeStatusText.textContent = '1. Транскодування відео';
     if (uploadStatusText) uploadStatusText.textContent = '2. Завантаження файлів у Cloudflare R2';
 
-    // Probe resolution if not provided
-    if (!fileInfo.height && fileInfo.path) {
-      const meta = await window.api.getVideoResolution(fileInfo.path);
+    // Probe resolution & duration if missing
+    if ((!selectedFile.height || !selectedFile.duration) && selectedFile.path) {
+      const meta = await window.api.getVideoResolution(selectedFile.path);
       if (meta) {
-        selectedFile.height = meta.height;
-        selectedFile.width = meta.width;
+        selectedFile.height = meta.height || selectedFile.height;
+        selectedFile.width = meta.width || selectedFile.width;
+        selectedFile.duration = meta.duration || selectedFile.duration;
       }
     }
 
+    function formatExactDuration(seconds) {
+      if (!seconds) return '';
+      const s = Math.round(seconds);
+      const hrs = Math.floor(s / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      if (hrs > 0) {
+        return `${hrs} год ${mins} хв ${secs} сек`;
+      }
+      return `${mins} хв ${secs} сек`;
+    }
+
+    const durText = selectedFile.duration ? ` • 🎬 ${formatExactDuration(selectedFile.duration)}` : '';
     const resText = selectedFile.height ? ` • ${selectedFile.width}x${selectedFile.height} (${selectedFile.height}p)` : '';
     selectedFilename.textContent = fileInfo.name;
-    selectedFilesize.textContent = `${formatBytes(fileInfo.size)}${resText}`;
+    selectedFilesize.textContent = `${formatBytes(fileInfo.size)}${durText}${resText}`;
 
     filterQualitiesBySourceHeight(selectedFile.height || 9999);
+    updateCreditCalculator();
 
     dropContentEmpty.classList.add('hidden');
     dropContentSelected.classList.remove('hidden');
@@ -779,19 +873,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       const qKey = cb.value;
       const targetHeight = PRESET_HEIGHTS[qKey] || 0;
       const label = cb.closest('.checkbox-label');
-      const descSpan = label.querySelector('.q-desc');
+      const descTextSpan = label.querySelector('.q-desc-text');
 
       if (targetHeight > sourceHeight) {
         cb.checked = false;
         cb.disabled = true;
         label.classList.add('disabled-quality');
-        if (descSpan) descSpan.textContent = `недоступно (джерело ${sourceHeight}p)`;
+        if (descTextSpan) descTextSpan.textContent = `недоступно (джерело ${sourceHeight}p)`;
       } else {
         cb.disabled = false;
         label.classList.remove('disabled-quality');
         const defaultBitrates = { '1080p': '5000 kbps', '720p': '2800 kbps', '480p': '1400 kbps', '360p': '800 kbps' };
-        if (descSpan) descSpan.textContent = defaultBitrates[qKey] || '';
-        // Auto-check valid qualities if none checked
+        if (descTextSpan) descTextSpan.textContent = defaultBitrates[qKey] || '';
         cb.checked = true;
       }
     });
@@ -806,9 +899,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       cb.disabled = false;
       const label = cb.closest('.checkbox-label');
       label.classList.remove('disabled-quality');
+      const descTextSpan = label.querySelector('.q-desc-text');
+      const defaultBitrates = { '1080p': '5000 kbps', '720p': '2800 kbps', '480p': '1400 kbps', '360p': '800 kbps' };
+      if (descTextSpan) descTextSpan.textContent = defaultBitrates[cb.value] || '';
+      cb.checked = true;
     });
 
     validateForm();
+    updateCreditCalculator();
   }
 
   let isProcessingActive = false;
@@ -884,9 +982,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Checkbox validation
+  // Checkbox & Mode validation
   qualityCheckboxes.forEach(cb => {
-    cb.addEventListener('change', validateForm);
+    cb.addEventListener('change', () => {
+      validateForm();
+      updateCreditCalculator();
+    });
+  });
+
+  document.querySelectorAll('input[name="transcode-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      validateForm();
+      updateCreditCalculator();
+    });
   });
 
   function validateForm() {
