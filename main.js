@@ -40,6 +40,28 @@ function findSystemExecutable(cmdName) {
 function configureFFmpegPaths() {
   let sysFfmpeg = findSystemExecutable('ffmpeg');
   let sysFfprobe = findSystemExecutable('ffprobe');
+  let isSystem = true;
+
+  if (!sysFfmpeg) {
+    try {
+      const ffmpegPkg = require('@ffmpeg-installer/ffmpeg');
+      const bundledPath = ffmpegPkg.path ? ffmpegPkg.path.replace('app.asar', 'app.asar.unpacked') : null;
+      if (bundledPath && fs.existsSync(bundledPath)) {
+        sysFfmpeg = bundledPath;
+        isSystem = false;
+      }
+    } catch (e) {}
+  }
+
+  if (!sysFfprobe) {
+    try {
+      const ffprobePkg = require('@ffprobe-installer/ffprobe');
+      const bundledPath = ffprobePkg.path ? ffprobePkg.path.replace('app.asar', 'app.asar.unpacked') : null;
+      if (bundledPath && fs.existsSync(bundledPath)) {
+        sysFfprobe = bundledPath;
+      }
+    } catch (e) {}
+  }
 
   if (sysFfmpeg) ffmpeg.setFfmpegPath(sysFfmpeg);
   if (sysFfprobe) ffmpeg.setFfprobePath(sysFfprobe);
@@ -47,7 +69,7 @@ function configureFFmpegPaths() {
   return {
     ffmpegPath: sysFfmpeg || 'не знайдено',
     ffprobePath: sysFfprobe || 'не знайдено',
-    isSystem: true,
+    isSystem: isSystem,
     isAvailable: Boolean(sysFfmpeg)
   };
 }
