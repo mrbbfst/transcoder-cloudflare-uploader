@@ -42,6 +42,9 @@
       "owner": "mrbbfst",
       "repo": "transcoder-cloudflare-uploader"
     },
+    "nsis": {
+      "differentialPackage": false
+    },
     "asarUnpack": [
       "node_modules/@ffmpeg-installer/**",
       "node_modules/@ffprobe-installer/**"
