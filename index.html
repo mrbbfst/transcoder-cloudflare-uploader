@@ -438,6 +438,29 @@
           Перевірка системного FFmpeg...
         </div>
       </div>
+
+      <div class="card settings-card margin-top">
+        <h2 style="display: inline-flex; align-items: center; gap: 8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <span>Оновлення програми</span>
+        </h2>
+        <p class="settings-hint">Автоматична перевірка нових випусків додатку в GitHub Releases.</p>
+
+        <div class="form-group row-check margin-top">
+          <label class="checkbox-label">
+            <input type="checkbox" id="auto-update-check" checked />
+            <span class="custom-checkbox"></span>
+            <span>Автоматично перевіряти оновлення при запуску</span>
+          </label>
+        </div>
+        <div style="margin-top: 12px; display: flex; align-items: center; gap: 10px;">
+          <button id="check-updates-btn" class="btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            <span>Перевірити наявність оновлень</span>
+          </button>
+          <span id="update-check-status" style="font-size: 13px; color: var(--text-muted);"></span>
+        </div>
+      </div>
     </div>
 
     <!-- View: Help -->
@@ -582,6 +605,42 @@
       <div class="modal-actions" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
         <button id="modal-cancel-btn" class="btn-secondary btn-sm">Скасувати</button>
         <button id="modal-confirm-btn" class="btn-primary btn-sm">Підтвердити</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Update Available Modal Dialog -->
+  <div id="update-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="width: 440px;">
+      <h3 style="margin-top: 0; font-size: 17px; display: flex; align-items: center; gap: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        <span>Доступне оновлення!</span>
+      </h3>
+      <p style="font-size: 13px; margin: 8px 0 12px 0; color: var(--text-main);">
+        Доступна нова версія <strong id="update-modal-ver" style="color: var(--accent-color);">v1.9.2</strong> (поточна <span id="update-modal-curr-ver">v1.9.1</span>).
+      </p>
+
+      <div id="update-progress-container" class="hidden" style="margin: 12px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+          <span id="update-status-text">Завантаження оновлення...</span>
+          <span id="update-percent-text">0%</span>
+        </div>
+        <div class="progress-bar-bg" style="height: 8px;">
+          <div id="update-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <div id="update-notes-box" class="test-msg info hidden" style="max-height: 100px; overflow-y: auto; font-size: 12px; margin-bottom: 12px;"></div>
+
+      <div class="modal-actions" style="margin-top: 16px; display: flex; flex-direction: column; gap: 8px;">
+        <button id="update-now-btn" class="btn-primary" style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="update-now-btn-text">Оновити зараз</span>
+        </button>
+        <div style="display: flex; justify-content: space-between; gap: 8px; margin-top: 4px;">
+          <button id="update-skip-btn" class="btn-secondary btn-sm" style="flex: 1;">Пропустити цей випуск</button>
+          <button id="update-never-btn" class="btn-secondary btn-sm" style="flex: 1; color: var(--text-muted);">Ніколи не оновлювати</button>
+        </div>
       </div>
     </div>
   </div>

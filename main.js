@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -127,6 +127,21 @@ function createWindow() {
     console.log(`[Renderer ${lvlStr}] ${message} (${file}:${line})`);
   });
 
+  // Handle external link navigation (open in default OS browser)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http:') || url.startsWith('https:')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
+
   mainWindow.loadFile('index.html');
 }
 
@@ -140,6 +155,160 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// --- Auto Updater Logic ---
+const { autoUpdater } = require('electron-updater');
+const https = require('https');
+
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function isNewerVersion(latest, current) {
+  if (!latest || !current) return false;
+  const lParts = latest.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const cParts = current.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(lParts.length, cParts.length); i++) {
+    const l = lParts[i] || 0;
+    const c = cParts[i] || 0;
+    if (l > c) return true;
+    if (l < c) return false;
+  }
+  return false;
+}
+
+function getUpdateSettings() {
+  if (!fs.existsSync(settingsPath)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveUpdateSettings(newFields) {
+  const current = getUpdateSettings();
+  const updated = { ...current, ...newFields };
+  fs.writeFileSync(settingsPath, JSON.stringify(updated, null, 2), 'utf-8');
+}
+
+function fetchGitHubLatestRelease() {
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/mrbbfst/transcoder-cloudflare-uploader/releases/latest',
+      headers: { 'User-Agent': 'transcoder-uploader-app' }
+    };
+    https.get(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }).on('error', () => resolve(null));
+  });
+}
+
+ipcMain.handle('shell:openExternal', async (event, url) => {
+  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+    await shell.openExternal(url);
+  }
+});
+
+ipcMain.handle('updater:check', async (event, { isManual = false } = {}) => {
+  try {
+    const settings = getUpdateSettings();
+    if (!isManual && settings.disableAutoUpdate) {
+      return { success: true, hasUpdate: false, disabled: true };
+    }
+
+    const currentVersion = app.getVersion();
+    let latestVersion = null;
+    let releaseNotes = '';
+    let releaseUrl = '';
+
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      if (result && result.updateInfo) {
+        latestVersion = result.updateInfo.version;
+        releaseNotes = result.updateInfo.releaseNotes || '';
+      }
+    } catch (e) {
+      // Fallback for dev mode / direct GitHub API check
+      const ghData = await fetchGitHubLatestRelease();
+      if (ghData && ghData.tag_name) {
+        latestVersion = ghData.tag_name.replace(/^v/, '');
+        releaseNotes = ghData.body || '';
+        releaseUrl = ghData.html_url || '';
+      }
+    }
+
+    if (!latestVersion) {
+      return { success: true, hasUpdate: false };
+    }
+
+    if (!isManual && settings.skippedVersion === latestVersion) {
+      return { success: true, hasUpdate: false, skipped: true };
+    }
+
+    const hasUpdate = isNewerVersion(latestVersion, currentVersion);
+    return {
+      success: true,
+      hasUpdate,
+      latestVersion,
+      currentVersion,
+      releaseNotes,
+      releaseUrl
+    };
+  } catch (err) {
+    console.error('Error checking updates:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('updater:skipVersion', async (event, version) => {
+  saveUpdateSettings({ skippedVersion: version });
+  return { success: true };
+});
+
+ipcMain.handle('updater:disableSetting', async (event, disable) => {
+  saveUpdateSettings({ disableAutoUpdate: Boolean(disable) });
+  return { success: true };
+});
+
+ipcMain.handle('updater:download', async () => {
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (err) {
+    console.error('Error downloading update:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('updater:install', () => {
+  autoUpdater.quitAndInstall();
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  if (mainWindow) {
+    mainWindow.webContents.send('updater:downloadProgress', {
+      percent: Math.round(progressObj.percent),
+      bytesPerSecond: progressObj.bytesPerSecond,
+      transferred: progressObj.transferred,
+      total: progressObj.total
+    });
+  }
+});
+
+autoUpdater.on('update-downloaded', () => {
+  if (mainWindow) {
+    mainWindow.webContents.send('updater:downloaded');
+  }
 });
 
 // --- Settings Handlers ---
@@ -278,6 +447,49 @@ ipcMain.handle('r2:listObjects', async (event, prefix = '') => {
   } catch (err) {
     console.error('Error listing R2 objects:', err);
     return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('r2:checkFolderExists', async (event, { folderName }) => {
+  try {
+    if (!fs.existsSync(settingsPath)) {
+      return { success: true, exists: false };
+    }
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    if (!settings.accountId || !settings.accessKeyId || !settings.secretAccessKey || !settings.bucketName) {
+      return { success: true, exists: false };
+    }
+
+    const s3Client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${settings.accountId.trim()}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: settings.accessKeyId.trim(),
+        secretAccessKey: settings.secretAccessKey.trim()
+      }
+    });
+
+    const cleanFolder = folderName ? folderName.trim().replace(/^\/+|\/+$/g, '') : '';
+    if (!cleanFolder) return { success: true, exists: false };
+
+    const folderPrefix = `${cleanFolder}/`;
+    const command = new ListObjectsV2Command({
+      Bucket: settings.bucketName.trim(),
+      Prefix: folderPrefix,
+      MaxKeys: 1
+    });
+
+    const response = await s3Client.send(command);
+    const exists = Boolean(
+      (response.Contents && response.Contents.length > 0) ||
+      (response.CommonPrefixes && response.CommonPrefixes.length > 0) ||
+      (response.KeyCount && response.KeyCount > 0)
+    );
+
+    return { success: true, exists, folderName: cleanFolder };
+  } catch (err) {
+    console.error('Error checking R2 folder existence:', err);
+    return { success: false, error: err.message, exists: false };
   }
 });
 

@@ -10,6 +10,26 @@ window.onunhandledrejection = function(event) {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Handle all external links to open in OS default browser
+  const affiBlogLink = document.getElementById('affi-blog-link');
+  if (affiBlogLink) {
+    affiBlogLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.api.openExternal('https://affi.blog?source=hls-transcoder');
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const anchor = e.target.closest('a');
+    if (anchor) {
+      const href = anchor.getAttribute('href');
+      if (href && href !== '#' && (href.startsWith('http://') || href.startsWith('https://'))) {
+        e.preventDefault();
+        window.api.openExternal(href);
+      }
+    }
+  });
+
   // Navigation elements
   const navTranscodeBtn = document.getElementById('nav-transcode-btn');
   const navExplorerBtn = document.getElementById('nav-explorer-btn');
@@ -59,14 +79,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   navExplorerBtn.addEventListener('click', () => setActiveTab('explorer'));
   navSettingsBtn.addEventListener('click', () => setActiveTab('settings'));
   if (navHelpBtn) navHelpBtn.addEventListener('click', () => setActiveTab('help'));
-
-  const affiBlogLink = document.getElementById('affi-blog-link');
-  if (affiBlogLink) {
-    affiBlogLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      window.open('https://affi.blog', '_blank');
-    });
-  }
 
   try {
     const version = await window.api.getAppVersion();
@@ -630,7 +642,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (startBtn) {
       const startBtnSpan = document.getElementById('start-btn-text') || startBtn;
       const hasQualities = activeQualities.length > 0;
-      if (isCloud) {
+      if (isProcessingActive) {
+        startBtn.disabled = true;
+        startBtnSpan.textContent = 'Обробка триває...';
+      } else if (isCloud) {
         if (currentUserBalanceUsd !== null && selectedFile && currentUserBalanceUsd < totalCostUsd) {
           startBtn.disabled = true;
           startBtnSpan.textContent = `Недостатньо коштів ($${totalCostUsd.toFixed(2)} | Баланс: $${currentUserBalanceUsd.toFixed(2)})`;
@@ -817,6 +832,138 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const ffmpegStatusBox = document.getElementById('ffmpeg-status-box');
 
+  // Auto Updater Elements
+  const autoUpdateCheck = document.getElementById('auto-update-check');
+  const checkUpdatesBtn = document.getElementById('check-updates-btn');
+  const updateCheckStatus = document.getElementById('update-check-status');
+
+  const updateModal = document.getElementById('update-modal');
+  const updateModalVer = document.getElementById('update-modal-ver');
+  const updateModalCurrVer = document.getElementById('update-modal-curr-ver');
+  const updateNotesBox = document.getElementById('update-notes-box');
+  const updateNowBtn = document.getElementById('update-now-btn');
+  const updateNowBtnText = document.getElementById('update-now-btn-text');
+  const updateSkipBtn = document.getElementById('update-skip-btn');
+  const updateNeverBtn = document.getElementById('update-never-btn');
+
+  const updateProgressContainer = document.getElementById('update-progress-container');
+  const updateProgressBar = document.getElementById('update-progress-bar');
+  const updateStatusText = document.getElementById('update-status-text');
+  const updatePercentText = document.getElementById('update-percent-text');
+
+  let pendingUpdateVersion = null;
+  let isUpdateReadyToInstall = false;
+
+  async function checkForUpdates(isManual = false) {
+    if (updateCheckStatus) updateCheckStatus.textContent = 'Перевірка...';
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+
+    try {
+      const res = await window.api.checkUpdate(isManual);
+      if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+
+      if (!res.success) {
+        if (updateCheckStatus) updateCheckStatus.textContent = `Помилка: ${res.error || 'не вдалося перевірити'}`;
+        if (isManual) alert(`Помилка перевірки оновлень: ${res.error}`);
+        return;
+      }
+
+      if (res.disabled && !isManual) {
+        if (updateCheckStatus) updateCheckStatus.textContent = 'Автооновлення вимкнено';
+        return;
+      }
+
+      if (res.hasUpdate) {
+        pendingUpdateVersion = res.latestVersion;
+        if (updateCheckStatus) updateCheckStatus.textContent = `Знайдено нову версію v${res.latestVersion}!`;
+        showUpdateModal(res);
+      } else {
+        if (updateCheckStatus) updateCheckStatus.textContent = `У вас найновіша версія (v${res.currentVersion || ''})`;
+        if (isManual) alert(`У вас встановлено найновішу версію (v${res.currentVersion || ''}).`);
+      }
+    } catch (e) {
+      if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+      if (updateCheckStatus) updateCheckStatus.textContent = 'Помилка перевірки';
+    }
+  }
+
+  function showUpdateModal({ latestVersion, currentVersion, releaseNotes }) {
+    if (!updateModal) return;
+    if (updateModalVer) updateModalVer.textContent = `v${latestVersion}`;
+    if (updateModalCurrVer) updateModalCurrVer.textContent = `v${currentVersion}`;
+
+    if (releaseNotes && updateNotesBox) {
+      updateNotesBox.textContent = releaseNotes;
+      updateNotesBox.classList.remove('hidden');
+    } else if (updateNotesBox) {
+      updateNotesBox.classList.add('hidden');
+    }
+
+    isUpdateReadyToInstall = false;
+    if (updateNowBtnText) updateNowBtnText.textContent = 'Оновити зараз';
+    if (updateProgressContainer) updateProgressContainer.classList.add('hidden');
+
+    updateModal.classList.remove('hidden');
+  }
+
+  if (autoUpdateCheck) {
+    autoUpdateCheck.addEventListener('change', () => {
+      window.api.disableAutoUpdateSetting(!autoUpdateCheck.checked);
+    });
+  }
+
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', () => checkForUpdates(true));
+  }
+
+  if (updateSkipBtn) {
+    updateSkipBtn.addEventListener('click', async () => {
+      if (pendingUpdateVersion) {
+        await window.api.skipVersion(pendingUpdateVersion);
+      }
+      if (updateModal) updateModal.classList.add('hidden');
+    });
+  }
+
+  if (updateNeverBtn) {
+    updateNeverBtn.addEventListener('click', async () => {
+      await window.api.disableAutoUpdateSetting(true);
+      if (autoUpdateCheck) autoUpdateCheck.checked = false;
+      if (updateModal) updateModal.classList.add('hidden');
+    });
+  }
+
+  if (updateNowBtn) {
+    updateNowBtn.addEventListener('click', async () => {
+      if (isUpdateReadyToInstall) {
+        window.api.installUpdate();
+      } else {
+        updateNowBtn.disabled = true;
+        if (updateNowBtnText) updateNowBtnText.textContent = 'Завантаження...';
+        if (updateProgressContainer) updateProgressContainer.classList.remove('hidden');
+
+        const res = await window.api.downloadUpdate();
+        if (!res.success) {
+          alert(`Помилка завантаження оновлення: ${res.error}`);
+          updateNowBtn.disabled = false;
+          if (updateNowBtnText) updateNowBtnText.textContent = 'Оновити зараз';
+        }
+      }
+    });
+  }
+
+  window.api.onUpdateProgress(({ percent }) => {
+    if (updateProgressBar) updateProgressBar.style.width = `${percent}%`;
+    if (updatePercentText) updatePercentText.textContent = `${percent}%`;
+  });
+
+  window.api.onUpdateDownloaded(() => {
+    isUpdateReadyToInstall = true;
+    if (updateNowBtn) updateNowBtn.disabled = false;
+    if (updateNowBtnText) updateNowBtnText.textContent = 'Перезапустити та встановити';
+    if (updateStatusText) updateStatusText.textContent = 'Оновлення завантажено!';
+  });
+
   // --- Load Initial Settings ---
   async function loadSettings() {
     const settings = await window.api.getSettings();
@@ -826,6 +973,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       r2SecretKey.value = settings.secretAccessKey || '';
       r2BucketName.value = settings.bucketName || '';
       r2PublicDomain.value = settings.publicDomain || '';
+
+      if (settings.disableAutoUpdate !== undefined && autoUpdateCheck) {
+        autoUpdateCheck.checked = !settings.disableAutoUpdate;
+      }
 
       if (proxyUrlInput) proxyUrlInput.value = settings.proxyUrl || 'http://localhost:3000';
       if (settings.tgAuthToken) {
@@ -851,6 +1002,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   loadSettings();
+  setTimeout(() => checkForUpdates(false), 2000);
 
   const transcodeModeRadios = document.querySelectorAll('input[name="transcode-mode"]');
   transcodeModeRadios.forEach(radio => {
@@ -1102,7 +1254,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   function validateForm() {
-    if (isProcessingActive) return;
+    if (isProcessingActive) {
+      if (startBtn) startBtn.disabled = true;
+      return;
+    }
     const hasQualities = Array.from(qualityCheckboxes).some(cb => cb.checked);
     startBtn.disabled = !(selectedFile && hasQualities);
   }
@@ -1142,6 +1297,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function showConfirmModal({ title, desc, confirmText = 'Підтвердити', cancelText = 'Скасувати' }) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('custom-input-modal');
+      const titleEl = document.getElementById('modal-title');
+      const descEl = document.getElementById('modal-desc');
+      const inputEl = document.getElementById('modal-input');
+      const cancelBtn = document.getElementById('modal-cancel-btn');
+      const confirmBtn = document.getElementById('modal-confirm-btn');
+
+      if (!modal) {
+        resolve(false);
+        return;
+      }
+
+      titleEl.textContent = title;
+      descEl.innerHTML = desc;
+      inputEl.classList.add('hidden');
+      cancelBtn.textContent = cancelText;
+      confirmBtn.textContent = confirmText;
+      modal.classList.remove('hidden');
+
+      const cleanup = () => {
+        modal.classList.add('hidden');
+        inputEl.classList.remove('hidden');
+        cancelBtn.textContent = 'Скасувати';
+        confirmBtn.textContent = 'Підтвердити';
+        cancelBtn.removeEventListener('click', onCancel);
+        confirmBtn.removeEventListener('click', onConfirm);
+        window.removeEventListener('keydown', onKeyDown);
+      };
+
+      const onCancel = () => {
+        cleanup();
+        resolve(false);
+      };
+
+      const onConfirm = () => {
+        cleanup();
+        resolve(true);
+      };
+
+      const onKeyDown = (e) => {
+        if (e.key === 'Enter') onConfirm();
+        if (e.key === 'Escape') onCancel();
+      };
+
+      cancelBtn.addEventListener('click', onCancel);
+      confirmBtn.addEventListener('click', onConfirm);
+      window.addEventListener('keydown', onKeyDown);
+    });
+  }
+
   // --- Start Processing ---
   startBtn.addEventListener('click', async () => {
     if (!selectedFile || isProcessingActive) return;
@@ -1163,6 +1370,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectedQualities = Array.from(qualityCheckboxes)
       .filter(cb => cb.checked)
       .map(cb => cb.value);
+
+    // --- Check Overwrite Risk (Only if random suffix is NOT enabled) ---
+    const hasRandomSuffix = randomSuffixCheck ? randomSuffixCheck.checked : false;
+    if (!hasRandomSuffix) {
+      const rawFolder = folderNameInput.value.trim();
+      const defaultFolder = selectedFile ? selectedFile.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_\-]/g, '-') : '';
+      const targetFolderToCheck = rawFolder || defaultFolder;
+
+      if (targetFolderToCheck) {
+        const checkRes = await window.api.checkR2FolderExists({ folderName: targetFolderToCheck });
+        if (checkRes.success && checkRes.exists) {
+          const confirmOverwrite = await showConfirmModal({
+            title: '⚠️ Попередження про перезапис',
+            desc: `Папка <strong>"${escapeHtml(checkRes.folderName)}"</strong> вже існує у вашому Cloudflare R2 бакеті!<br><br>Запуск обробки оновлить або перезапише матеріали (<code>master.m3u8</code> та сегменти якості) всередині цієї папки.<br><br>Ви дійсно бажаєте продовжити та перезаписати вміст?`,
+            confirmText: 'Перезаписати',
+            cancelText: 'Скасувати'
+          });
+
+          if (!confirmOverwrite) {
+            return; // Cancelled by user
+          }
+        }
+      }
+    }
 
     // UI Reset & Lock
     setProcessingState(true);

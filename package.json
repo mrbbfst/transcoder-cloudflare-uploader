@@ -1,6 +1,6 @@
 {
   "name": "transcoder-uploader",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "Desktop app for video HLS transcoding and Cloudflare R2 uploader",
   "main": "main.js",
   "scripts": {
@@ -26,6 +26,7 @@
     "@aws-sdk/lib-storage": "^3.600.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
+    "electron-updater": "^6.8.9",
     "fluent-ffmpeg": "^2.1.3",
     "mime-types": "^2.1.35"
   },
@@ -36,6 +37,11 @@
   "build": {
     "appId": "com.transcoder.uploader",
     "productName": "HLS Transcoder R2",
+    "publish": {
+      "provider": "github",
+      "owner": "mrbbfst",
+      "repo": "transcoder-cloudflare-uploader"
+    },
     "asarUnpack": [
       "node_modules/@ffmpeg-installer/**",
       "node_modules/@ffprobe-installer/**"

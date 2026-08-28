@@ -10,11 +10,30 @@ contextBridge.exposeInMainWorld('api', {
   getFFmpegStatus: () => ipcRenderer.invoke('ffmpeg:getStatus'),
   testR2Settings: (settings) => ipcRenderer.invoke('settings:testR2', settings),
   listR2Objects: (prefix) => ipcRenderer.invoke('r2:listObjects', prefix),
+  checkR2FolderExists: (data) => ipcRenderer.invoke('r2:checkFolderExists', data),
   deleteR2Object: (data) => ipcRenderer.invoke('r2:deleteObject', data),
   deleteBatchR2Objects: (items) => ipcRenderer.invoke('r2:deleteBatch', items),
   createR2Folder: (data) => ipcRenderer.invoke('r2:createFolder', data),
   uploadAnyR2File: (prefix) => ipcRenderer.invoke('r2:uploadAnyFile', prefix),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  
+  checkUpdate: (isManual) => ipcRenderer.invoke('updater:check', { isManual }),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  skipVersion: (version) => ipcRenderer.invoke('updater:skipVersion', version),
+  disableAutoUpdateSetting: (disable) => ipcRenderer.invoke('updater:disableSetting', disable),
+
+  onUpdateProgress: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('updater:downloadProgress', subscription);
+    return () => ipcRenderer.removeListener('updater:downloadProgress', subscription);
+  },
+  onUpdateDownloaded: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('updater:downloaded', subscription);
+    return () => ipcRenderer.removeListener('updater:downloaded', subscription);
+  },
   
   onTranscodeProgress: (callback) => {
     const subscription = (event, data) => callback(data);
