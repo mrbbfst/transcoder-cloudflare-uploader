@@ -106,9 +106,9 @@ const QUALITY_PRESETS = {
 function createWindow() {
   const iconPath = path.join(__dirname, 'build', 'icon.png');
   mainWindow = new BrowserWindow({
-    width: 960,
+    width: 1100,
     height: 720,
-    minWidth: 960,
+    minWidth: 1100,
     minHeight: 600,
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     titleBarStyle: 'hidden',
@@ -277,6 +277,43 @@ ipcMain.handle('r2:listObjects', async (event, prefix = '') => {
     };
   } catch (err) {
     console.error('Error listing R2 objects:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('r2:createFolder', async (event, { prefix, folderName }) => {
+  try {
+    if (!fs.existsSync(settingsPath)) {
+      throw new Error('Налаштування Cloudflare R2 відсутні.');
+    }
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+
+    const s3Client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${settings.accountId.trim()}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: settings.accessKeyId.trim(),
+        secretAccessKey: settings.secretAccessKey.trim()
+      }
+    });
+
+    const cleanName = folderName.trim().replace(/^\/+|\/+$/g, '');
+    if (!cleanName) {
+      throw new Error('Назва папки не може бути порожньою.');
+    }
+
+    const basePrefix = prefix ? (prefix.endsWith('/') ? prefix : `${prefix}/`) : '';
+    const folderKey = `${basePrefix}${cleanName}/`;
+
+    await s3Client.send(new PutObjectCommand({
+      Bucket: settings.bucketName.trim(),
+      Key: folderKey,
+      Body: ''
+    }));
+
+    return { success: true, folderKey };
+  } catch (err) {
+    console.error('Error creating R2 folder:', err);
     return { success: false, error: err.message };
   }
 });

@@ -14,11 +14,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const navTranscodeBtn = document.getElementById('nav-transcode-btn');
   const navExplorerBtn = document.getElementById('nav-explorer-btn');
   const navSettingsBtn = document.getElementById('nav-settings-btn');
+  const navHelpBtn = document.getElementById('nav-help-btn');
   const viewTranscode = document.getElementById('view-transcode');
   const viewExplorer = document.getElementById('view-explorer');
   const viewSettings = document.getElementById('view-settings');
+  const viewHelp = document.getElementById('view-help');
 
   // Explorer elements
+  const explorerCreateFolderBtn = document.getElementById('explorer-create-folder-btn');
   const explorerUploadBtn = document.getElementById('explorer-upload-btn');
   const explorerDeleteSelectedBtn = document.getElementById('explorer-delete-selected-btn');
   const explorerRefreshBtn = document.getElementById('explorer-refresh-btn');
@@ -38,10 +41,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     navTranscodeBtn.classList.toggle('active', tab === 'transcode');
     navExplorerBtn.classList.toggle('active', tab === 'explorer');
     navSettingsBtn.classList.toggle('active', tab === 'settings');
+    if (navHelpBtn) navHelpBtn.classList.toggle('active', tab === 'help');
 
     viewTranscode.classList.toggle('hidden', tab !== 'transcode');
     viewExplorer.classList.toggle('hidden', tab !== 'explorer');
     viewSettings.classList.toggle('hidden', tab !== 'settings');
+    if (viewHelp) viewHelp.classList.toggle('hidden', tab !== 'help');
 
     if (tab === 'explorer') {
       loadExplorer(currentExplorerPrefix);
@@ -53,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   navTranscodeBtn.addEventListener('click', () => setActiveTab('transcode'));
   navExplorerBtn.addEventListener('click', () => setActiveTab('explorer'));
   navSettingsBtn.addEventListener('click', () => setActiveTab('settings'));
+  if (navHelpBtn) navHelpBtn.addEventListener('click', () => setActiveTab('help'));
 
   const affiBlogLink = document.getElementById('affi-blog-link');
   if (affiBlogLink) {
@@ -95,7 +101,88 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderExplorerList(res.folders, res.files, prefix);
   }
 
+  // --- Helper: Custom Modal Input Prompt ---
+  function showPromptModal({ title, desc, placeholder = '', initialValue = '' }) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('custom-input-modal');
+      const titleEl = document.getElementById('modal-title');
+      const descEl = document.getElementById('modal-desc');
+      const inputEl = document.getElementById('modal-input');
+      const cancelBtn = document.getElementById('modal-cancel-btn');
+      const confirmBtn = document.getElementById('modal-confirm-btn');
+
+      if (!modal || !inputEl) {
+        resolve(null);
+        return;
+      }
+
+      titleEl.textContent = title;
+      descEl.textContent = desc;
+      inputEl.placeholder = placeholder;
+      inputEl.value = initialValue;
+      modal.classList.remove('hidden');
+      setTimeout(() => inputEl.focus(), 50);
+
+      const cleanup = () => {
+        modal.classList.add('hidden');
+        cancelBtn.removeEventListener('click', onCancel);
+        confirmBtn.removeEventListener('click', onConfirm);
+        inputEl.removeEventListener('keydown', onKeyDown);
+      };
+
+      const onCancel = () => {
+        cleanup();
+        resolve(null);
+      };
+
+      const onConfirm = () => {
+        const val = inputEl.value.trim();
+        cleanup();
+        resolve(val);
+      };
+
+      const onKeyDown = (e) => {
+        if (e.key === 'Enter') onConfirm();
+        if (e.key === 'Escape') onCancel();
+      };
+
+      cancelBtn.addEventListener('click', onCancel);
+      confirmBtn.addEventListener('click', onConfirm);
+      inputEl.addEventListener('keydown', onKeyDown);
+    });
+  }
+
   explorerRefreshBtn.addEventListener('click', () => loadExplorer(currentExplorerPrefix));
+
+  if (explorerCreateFolderBtn) {
+    explorerCreateFolderBtn.addEventListener('click', async () => {
+      const folderName = await showPromptModal({
+        title: 'Створення нової папки',
+        desc: 'Введіть назву для нової папки в R2 бакеті:',
+        placeholder: 'наприклад: my-hls-folder'
+      });
+
+      if (!folderName) return;
+
+      explorerStatus.className = 'explorer-status info';
+      explorerStatus.textContent = `Створення папки "${folderName}" у R2...`;
+      explorerStatus.classList.remove('hidden');
+      disableExplorerControls(true);
+
+      const res = await window.api.createR2Folder({
+        prefix: currentExplorerPrefix,
+        folderName
+      });
+
+      disableExplorerControls(false);
+      if (res.success) {
+        loadExplorer(currentExplorerPrefix);
+      } else {
+        alert(`Помилка створення папки: ${res.error}`);
+        explorerStatus.classList.add('hidden');
+      }
+    });
+  }
 
   if (explorerUploadBtn) {
     explorerUploadBtn.addEventListener('click', async () => {
@@ -128,6 +215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function disableExplorerControls(disabled) {
+    if (explorerCreateFolderBtn) explorerCreateFolderBtn.disabled = disabled;
     if (explorerUploadBtn) explorerUploadBtn.disabled = disabled;
     if (explorerDeleteSelectedBtn) explorerDeleteSelectedBtn.disabled = disabled;
     if (explorerRefreshBtn) explorerRefreshBtn.disabled = disabled;

@@ -864,3 +864,44 @@ input[type="text"]:focus, input[type="password"]:focus {
   margin-left: 6px;
 }
 
+/* Custom Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  width: 380px;
+  max-width: 90%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.modal-input-field {
+  width: 100%;
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.modal-input-field:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+

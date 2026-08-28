@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   listR2Objects: (prefix) => ipcRenderer.invoke('r2:listObjects', prefix),
   deleteR2Object: (data) => ipcRenderer.invoke('r2:deleteObject', data),
   deleteBatchR2Objects: (items) => ipcRenderer.invoke('r2:deleteBatch', items),
+  createR2Folder: (data) => ipcRenderer.invoke('r2:createFolder', data),
   uploadAnyR2File: (prefix) => ipcRenderer.invoke('r2:uploadAnyFile', prefix),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
   

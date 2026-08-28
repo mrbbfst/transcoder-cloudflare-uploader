@@ -19,7 +19,7 @@
     "transcoder",
     "electron"
   ],
-  "author": "Affi Blog <support@affi.blog>",
+  "author": "Affi Blog <prog@duck.com>",
   "license": "Apache-2.0",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.600.0",
@@ -71,7 +71,7 @@
     },
     "linux": {
       "icon": "build/icon.png",
-      "maintainer": "Affi Blog <support@affi.blog>",
+      "maintainer": "Affi Blog <prog@duck.com>",
       "target": [
         "AppImage",
         "deb"

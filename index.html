@@ -37,6 +37,14 @@
         </svg>
         <span>Налаштування</span>
       </button>
+      <button id="nav-help-btn" class="nav-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span>Довідка</span>
+      </button>
     </div>
     <div id="header-user-widget" class="header-user-widget">
       <button id="header-auth-btn" class="btn-sm btn-secondary" style="display: inline-flex; align-items: center; gap: 6px;">
@@ -282,6 +290,10 @@
             </div>
           </div>
           <div class="explorer-actions">
+            <button id="explorer-create-folder-btn" class="btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+              <span>Створити папку</span>
+            </button>
             <button id="explorer-upload-btn" class="btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               <span>Завантажити файл</span>
@@ -427,10 +439,151 @@
         </div>
       </div>
     </div>
+
+    <!-- View: Help -->
+    <div id="view-help" class="view-panel hidden">
+      <div class="card help-card">
+        <h2 style="display: inline-flex; align-items: center; gap: 8px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>Довідка та Інструкція користувача</span>
+        </h2>
+        <p class="settings-hint">Повний посібник із використання HLS Transcoder R2 для створення та публікації відеопотоків.</p>
+
+        <div class="help-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 16px;">
+          
+          <!-- Section 1 -->
+          <div class="help-section-card" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
+            <h3 style="display: inline-flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 10px; color: var(--accent-color);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 2 3 14 12 14 11 22 21 10 13 2"/></svg>
+              <span>1. Швидкий запуск обробки</span>
+            </h3>
+            <ol style="margin-left: 18px; line-height: 1.6; font-size: 13px; color: var(--text-main);">
+              <li><strong>Перетягніть або оберіть відеофайл</strong> у першій вкладці "Транскодер".</li>
+              <li><strong>Оберіть необхідні якості</strong> (наприклад: 1080p, 720p, 480p, 360p).</li>
+              <li><strong>Оберіть режим обробки</strong>: Локальний (CPU) чи Хмарний (GPU).</li>
+              <li><strong>Натисніть "Розпочати"</strong>. Після завершення ви отримаєте готове Master Playlist HLS посилання (<code>.m3u8</code>).</li>
+            </ol>
+          </div>
+
+          <!-- Section 2 -->
+          <div class="help-section-card" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
+            <h3 style="display: inline-flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 10px; color: var(--accent-color);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+              <span>2. Режими обробки (CPU vs GPU)</span>
+            </h3>
+            <ul style="margin-left: 18px; line-height: 1.6; font-size: 13px; color: var(--text-main);">
+              <li><strong>Локальне CPU транскодування:</strong> Виконується на вашому ПК через системний або вбудований FFmpeg. Безкоштовно. Швидкість залежить від вашого процесора.</li>
+              <li><strong>Хмарне GPU транскодування:</strong> Відео завантажується та миттєво кодується на супершвидкому GPU сервері. Потребує входу через Telegram та кредитів на балансі.</li>
+            </ul>
+          </div>
+
+          <!-- Section 3: Detailed R2 Setup Guide -->
+          <div class="help-section-card" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 18px; grid-column: 1 / -1;">
+            <h3 style="display: inline-flex; align-items: center; gap: 8px; font-size: 16px; margin-bottom: 12px; color: var(--accent-color);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+              <span>3. Покрокова інструкція створення Cloudflare R2 бакета та отримання API ключів</span>
+            </h3>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; font-size: 13px; line-height: 1.6;">
+              <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); padding: 14px; border-radius: 6px;">
+                <strong style="color: #fff; font-size: 14px;">Крок 1: Створення R2 Бакету</strong>
+                <ol style="margin-left: 16px; margin-top: 6px; color: var(--text-main);">
+                  <li>Увійдіть у власний акаунт <strong>Cloudflare Dashboard</strong>.</li>
+                  <li>У боковому меню відкрийте розділ <strong>R2 Object Storage</strong>.</li>
+                  <li>Натисніть <strong>Create bucket</strong>.</li>
+                  <li>Вкажіть бажану назву бакета (наприклад: <code>my-hls-videos</code>) та підтвердіть створення.</li>
+                </ol>
+              </div>
+
+              <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); padding: 14px; border-radius: 6px;">
+                <strong style="color: #fff; font-size: 14px;">Крок 2: Отримання API Токена (Credentials)</strong>
+                <ol style="margin-left: 16px; margin-top: 6px; color: var(--text-main);">
+                  <li>У розділі R2 Overview праворуч натисніть <strong>Manage R2 API Tokens</strong>.</li>
+                  <li>Натисніть <strong>Create API Token</strong>.</li>
+                  <li>Вкажіть права: оберіть <strong>Edit</strong> (або Read & Write).</li>
+                  <li>Натисніть <strong>Create API Token</strong> і не закривайте сторінку з ключами.</li>
+                </ol>
+              </div>
+
+              <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); padding: 14px; border-radius: 6px;">
+                <strong style="color: #fff; font-size: 14px;">Крок 3: Внесення ключів у додатку</strong>
+                <ol style="margin-left: 16px; margin-top: 6px; color: var(--text-main);">
+                  <li>Скопіюйте <strong>Account ID</strong> (із панелі R2 Overview).</li>
+                  <li>Скопіюйте <strong>Access Key ID</strong> та <strong>Secret Access Key</strong> зі сторінки створеного токена.</li>
+                  <li>Вставте їх у вкладці <strong>"Налаштування"</strong> додатку та натисніть <em>"Зберегти"</em>.</li>
+                </ol>
+              </div>
+
+              <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); padding: 14px; border-radius: 6px;">
+                <strong style="color: #fff; font-size: 14px;">Крок 4: Публічний CDN Домен (Public Domain)</strong>
+                <ol style="margin-left: 16px; margin-top: 6px; color: var(--text-main);">
+                  <li>У налаштуваннях вашого бакета (вкладка <strong>Settings</strong>) знайдіть розділ <strong>Public Access</strong>.</li>
+                  <li>Підключіть свій домен (<code>Custom Domain</code>, наприклад <code>cdn.yourdomain.com</code>) або увімкніть <code>R2.dev Subdomain</code>.</li>
+                  <li>Вкажіть цей домен у полі <strong>Публічний CDN Домен</strong> у Налаштуваннях додатку.</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 4 -->
+          <div class="help-section-card" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
+            <h3 style="display: inline-flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 10px; color: var(--accent-color);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span>4. Оглядач файлів R2 Explorer</span>
+            </h3>
+            <p style="font-size: 13px; line-height: 1.5; color: var(--text-main); margin-bottom: 8px;">
+              Дозволяє переглядати вміст вашого хмарного бакета R2:
+            </p>
+            <ul style="margin-left: 18px; line-height: 1.6; font-size: 13px; color: var(--text-main);">
+              <li>Копіювати прямі CDN посилання на плейлисти (<code>.m3u8</code>).</li>
+              <li>Видаляти застарілі відеопапки чи окремі сегменти.</li>
+              <li>Завантажувати довільні файли безпосередньо в будь-яку папку.</li>
+            </ul>
+          </div>
+
+          <!-- Section 5 -->
+          <div class="help-section-card" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
+            <h3 style="display: inline-flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 10px; color: var(--accent-color);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>5. Захист від перебору URL</span>
+            </h3>
+            <p style="font-size: 13px; line-height: 1.5; color: var(--text-main);">
+              При увімкненні опції <em>"Додавати криптостійкий суфікс"</em> програма автоматично генерує унікальний рандомний хеш до назви папки. Це гарантує, що ніхто не зможе підібрати посилання на ваші відеопотоки через перебір назв.
+            </p>
+          </div>
+
+          <!-- Section 6 -->
+          <div class="help-section-card" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
+            <h3 style="display: inline-flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 10px; color: var(--accent-color);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              <span>6. Сумісність HLS посилань</span>
+            </h3>
+            <p style="font-size: 13px; line-height: 1.5; color: var(--text-main);">
+              Сгенеровані <code>master.m3u8</code> посилання сумісні з усім сучасним медіа-обладнанням: веб-плеєрами (HLS.js, Video.js, Plyr), смарт-ТВ, iOS/Safari та Android додатками з підтримкою адаптивного бітрейту.
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
   </div>
 
   <div class="app-footer">
     <span>HLS Transcoder <span class="app-version-val"></span> • Розроблено за підтримки <a id="affi-blog-link" class="affi-link" href="#">affi.blog</a></span>
+  </div>
+
+  <!-- Custom Input Modal Dialog -->
+  <div id="custom-input-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h3 id="modal-title" style="margin-top: 0; font-size: 16px;">Введення даних</h3>
+      <p id="modal-desc" class="text-muted" style="font-size: 13px; margin: 8px 0 14px 0; line-height: 1.4;"></p>
+      <input type="text" id="modal-input" class="modal-input-field" autocomplete="off" spellcheck="false" />
+      <div class="modal-actions" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+        <button id="modal-cancel-btn" class="btn-secondary btn-sm">Скасувати</button>
+        <button id="modal-confirm-btn" class="btn-primary btn-sm">Підтвердити</button>
+      </div>
+    </div>
   </div>
 
   <script src="renderer.js"></script>
