@@ -943,8 +943,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (updateProgressContainer) updateProgressContainer.classList.remove('hidden');
 
         const res = await window.api.downloadUpdate();
-        if (!res.success) {
-          alert(`Помилка завантаження оновлення: ${res.error}`);
+        if (res.openedBrowser) {
+          if (updateModal) updateModal.classList.add('hidden');
+          if (updateCheckStatus) updateCheckStatus.textContent = 'Відкрито сторінку завантаження релізу у браузері';
+        } else if (!res.success) {
+          alert(`Помилка завантаження оновлення через autoUpdater:\n${res.error}`);
           updateNowBtn.disabled = false;
           if (updateNowBtnText) updateNowBtnText.textContent = 'Оновити зараз';
         }

@@ -164,6 +164,26 @@ const https = require('https');
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
+try {
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'mrbbfst',
+    repo: 'transcoder-cloudflare-uploader'
+  });
+} catch (err) {
+  console.warn('Error setting autoUpdater feed URL:', err);
+}
+
+try {
+  if (process.resourcesPath) {
+    const appUpdatePath = path.join(process.resourcesPath, 'app-update.yml');
+    if (!fs.existsSync(appUpdatePath)) {
+      const ymlContent = `provider: github\nowner: mrbbfst\nrepo: transcoder-cloudflare-uploader\nupdaterCacheDirName: transcoder-uploader-updater\n`;
+      fs.writeFileSync(appUpdatePath, ymlContent, 'utf-8');
+    }
+  }
+} catch (e) {}
+
 function isNewerVersion(latest, current) {
   if (!latest || !current) return false;
   const lParts = latest.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
@@ -282,10 +302,23 @@ ipcMain.handle('updater:disableSetting', async (event, disable) => {
 
 ipcMain.handle('updater:download', async () => {
   try {
-    await autoUpdater.downloadUpdate();
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (e) {}
+    const downloadPromise = autoUpdater.downloadUpdate();
+    if (downloadPromise && typeof downloadPromise.then === 'function') {
+      await downloadPromise;
+    }
     return { success: true };
   } catch (err) {
-    console.error('Error downloading update:', err);
+    console.error('Error downloading update via autoUpdater:', err);
+    try {
+      const ghData = await fetchGitHubLatestRelease();
+      if (ghData && ghData.html_url) {
+        shell.openExternal(ghData.html_url);
+        return { success: true, openedBrowser: true };
+      }
+    } catch (e) {}
     return { success: false, error: err.message };
   }
 });
