@@ -33,26 +33,29 @@ class BackendProxyProvider extends BaseCloudProvider {
   async checkBalance(payload) {
     if (!this.proxyUrl || !this.authToken) return { allowed: true };
 
-    const response = await fetch(`${this.proxyUrl}/api/transcode/check`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.authToken}`
-      },
-      body: JSON.stringify(payload)
-    });
+    try {
+      const response = await fetch(`${this.proxyUrl}/api/user/me?_t=${Date.now()}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`
+        }
+      });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      let msg = errText;
-      try {
-        const jsonErr = JSON.parse(errText);
-        msg = jsonErr.error || errText;
-      } catch (e) {}
-      throw new Error(`Помилка підтвердження коштів (${response.status}): ${msg}`);
+      if (response.ok) {
+        const user = await response.json();
+        const balance = user.balanceUsd !== undefined ? user.balanceUsd : (user.balance_usd !== undefined ? user.balance_usd : 0);
+        if (balance <= 0) {
+          throw new Error(`Недостатньо коштів на хмарному балансі ($${balance.toFixed(2)}). Будь ласка, поповніть баланс через Telegram-бота.`);
+        }
+        return { allowed: true, balance };
+      }
+    } catch (err) {
+      if (err.message && err.message.includes('Недостатньо коштів')) {
+        throw err;
+      }
     }
 
-    return await response.json();
+    return { allowed: true };
   }
 
   async startJob(payload) {
