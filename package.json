@@ -37,13 +37,21 @@
   "build": {
     "appId": "com.transcoder.uploader",
     "productName": "HLS Transcoder R2",
+    "artifactName": "HLS-Transcoder-R2-${version}-${os}.${ext}",
+    "mac": {
+      "artifactName": "HLS-Transcoder-R2-${version}-mac.${ext}"
+    },
+    "win": {
+      "artifactName": "HLS-Transcoder-R2-${version}-win.${ext}"
+    },
+    "nsis": {
+      "differentialPackage": false,
+      "artifactName": "HLS-Transcoder-R2-Setup-${version}.${ext}"
+    },
     "publish": {
       "provider": "github",
       "owner": "mrbbfst",
       "repo": "transcoder-cloudflare-uploader"
-    },
-    "nsis": {
-      "differentialPackage": false
     },
     "asarUnpack": [
       "node_modules/@ffmpeg-installer/**",
