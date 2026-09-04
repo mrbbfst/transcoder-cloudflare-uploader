@@ -1559,7 +1559,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       const settings = await window.api.getSettings();
-      if (!settings || !settings.r2 || !settings.r2.accountId || !settings.r2.bucketName) {
+      const r2Settings = (settings && settings.accountId) ? settings : (settings ? settings.r2 : null);
+
+      if (!r2Settings || !r2Settings.accountId || !r2Settings.accessKeyId || !r2Settings.secretAccessKey || !r2Settings.bucketName || !r2Settings.publicDomain) {
         alert('Будь ласка, спочатку заповніть налаштування Cloudflare R2 на вкладці "Налаштування"!');
         setActiveTab('settings');
         return;
@@ -1579,7 +1581,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         folderName: m3u8FolderNameInput ? m3u8FolderNameInput.value.trim() : '',
         addRandomSuffix: m3u8RandomSuffixCheck ? m3u8RandomSuffixCheck.checked : true,
         keepLocal: m3u8KeepLocalCheck ? m3u8KeepLocalCheck.checked : false,
-        r2Settings: settings.r2
+        r2Settings: r2Settings
       });
     });
   }
