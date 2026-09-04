@@ -1258,6 +1258,415 @@ ipcMain.on('process:start', async (event, data) => {
   }
 });
 
+// --- M3U8 Copier Process ---
+let activeM3u8CancelRef = { isCancelled: false };
+
+ipcMain.on('m3u8:stopCopy', () => {
+  activeM3u8CancelRef.isCancelled = true;
+});
+
+function httpDownloadUrl(urlStr, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    try {
+      const parsedUrl = new URL(urlStr);
+      const httpModule = parsedUrl.protocol === 'https:' ? require('https') : require('http');
+
+      const req = httpModule.get(urlStr, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': '*/*'
+        }
+      }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const redirectUrl = new URL(res.headers.location, urlStr).href;
+          return resolve(httpDownloadUrl(redirectUrl, timeoutMs));
+        }
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`HTTP ${res.statusCode} під час завантаження ${urlStr}`));
+        }
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('error', (err) => reject(err));
+      });
+
+      req.on('error', (err) => reject(err));
+      req.setTimeout(timeoutMs, () => {
+        req.destroy();
+        reject(new Error(`Таймаут завантаження (${urlStr})`));
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+ipcMain.on('m3u8:startCopy', async (event, data) => {
+  const { m3u8Url, folderName, addRandomSuffix, keepLocal, r2Settings } = data;
+  const tempDir = path.join(os.tmpdir(), `m3u8-copy-${Date.now()}`);
+  activeM3u8CancelRef = { isCancelled: false };
+  const cancelRef = activeM3u8CancelRef;
+
+  clearDockProgressBar();
+  updateDockProgressBar(0, 0);
+
+  const sendStatus = (status, details = '') => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('m3u8:status', { status, details });
+    }
+  };
+
+  const sendError = (errorMsg) => {
+    clearDockProgressBar();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('m3u8:error', { error: errorMsg });
+    }
+  };
+
+  try {
+    if (!m3u8Url || !m3u8Url.trim()) {
+      throw new Error('Будь ласка, введіть коректне M3U8 посилання!');
+    }
+
+    if (!r2Settings || !r2Settings.accountId || !r2Settings.accessKeyId || !r2Settings.secretAccessKey || !r2Settings.bucketName || !r2Settings.publicDomain) {
+      throw new Error('Будь ласка, заповніть усі налаштування Cloudflare R2!');
+    }
+
+    let targetFolder = (folderName && folderName.trim()) ? folderName.trim().replace(/^\/+|\/+$/g, '') : `m3u8-copy-${Date.now()}`;
+    if (addRandomSuffix) {
+      targetFolder = `${targetFolder}-${crypto.randomBytes(10).toString('hex')}`;
+    }
+
+    fs.mkdirSync(tempDir, { recursive: true });
+    sendStatus('Аналіз та завантаження первинного M3U8 плейліста...');
+
+    const rootUrl = m3u8Url.trim();
+    const rootBaseUrl = rootUrl.substring(0, rootUrl.lastIndexOf('/') + 1);
+
+    const rootBuffer = await httpDownloadUrl(rootUrl);
+    const rootText = rootBuffer.toString('utf-8');
+
+    if (!rootText.includes('#EXTM3U')) {
+      throw new Error('Вказаний URL не повертає валідний HLS плейліст (#EXTM3U)');
+    }
+
+    const isMaster = rootText.includes('#EXT-X-STREAM-INF') || rootText.includes('#EXT-X-MEDIA');
+
+    let masterFileName = 'playlist.m3u8';
+    try {
+      const urlPath = new URL(rootUrl).pathname;
+      const base = path.basename(urlPath);
+      if (base.endsWith('.m3u8')) masterFileName = base;
+    } catch (e) {}
+
+    const segmentDownloads = [];
+    const playlistsToSave = [];
+
+    if (isMaster) {
+      sendStatus('Знайдено Master Playlist. Аналіз якості та підплейлістів...');
+      const lines = rootText.split(/\r?\n/);
+      const newMasterLines = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        if (line.startsWith('#EXT-X-STREAM-INF') || line.startsWith('#EXT-X-MEDIA')) {
+          newMasterLines.push(line);
+          if (line.includes('URI="')) {
+            line = line.replace(/URI="([^"]+)"/g, (match, uri) => {
+              const absUrl = new URL(uri, rootUrl).href;
+              let relPath = uri;
+              if (absUrl.startsWith(rootBaseUrl)) {
+                relPath = absUrl.substring(rootBaseUrl.length);
+              } else {
+                relPath = `media_${crypto.createHash('md5').update(absUrl).digest('hex').substring(0, 8)}.m3u8`;
+              }
+              segmentDownloads.push({ url: absUrl, relPath, isPlaylist: true });
+              return `URI="${relPath}"`;
+            });
+            newMasterLines[newMasterLines.length - 1] = line;
+          }
+          if (line.startsWith('#EXT-X-STREAM-INF') && i + 1 < lines.length && !lines[i + 1].startsWith('#')) {
+            i++;
+            const variantUri = lines[i].trim();
+            const variantAbsUrl = new URL(variantUri, rootUrl).href;
+            let variantRelPath = variantUri;
+            if (variantAbsUrl.startsWith(rootBaseUrl)) {
+              variantRelPath = variantAbsUrl.substring(rootBaseUrl.length);
+            } else {
+              variantRelPath = `variant_${crypto.createHash('md5').update(variantAbsUrl).digest('hex').substring(0, 8)}.m3u8`;
+            }
+            segmentDownloads.push({ url: variantAbsUrl, relPath: variantRelPath, isPlaylist: true });
+            newMasterLines.push(variantRelPath);
+          }
+        } else {
+          newMasterLines.push(line);
+        }
+      }
+
+      playlistsToSave.push({
+        localPath: path.join(tempDir, masterFileName),
+        content: newMasterLines.join('\n')
+      });
+    } else {
+      sendStatus('Знайдено Variant Playlist. Аналіз сегментів...');
+      segmentDownloads.push({ url: rootUrl, relPath: masterFileName, isPlaylist: true });
+    }
+
+    const allFilesToDownload = [];
+    const playlistsToParse = [...segmentDownloads.filter(item => item.isPlaylist)];
+
+    for (const item of playlistsToParse) {
+      if (cancelRef.isCancelled) throw new Error('PROCESS_CANCELLED');
+
+      let text = '';
+      if (item.url === rootUrl) {
+        text = rootText;
+      } else {
+        sendStatus(`Аналіз плейліста якості: ${item.relPath}...`);
+        const buf = await httpDownloadUrl(item.url);
+        text = buf.toString('utf-8');
+      }
+
+      const varBaseUrl = item.url.substring(0, item.url.lastIndexOf('/') + 1);
+      const varDirRel = path.dirname(item.relPath);
+
+      const lines = text.split(/\r?\n/);
+      const newVarLines = [];
+
+      for (let l of lines) {
+        let line = l.trim();
+        if (!line) continue;
+
+        if (line.startsWith('#EXT-X-MAP:') && line.includes('URI="')) {
+          line = line.replace(/URI="([^"]+)"/g, (match, uri) => {
+            const segAbsUrl = new URL(uri, varBaseUrl).href;
+            let segFileName = path.basename(new URL(segAbsUrl).pathname);
+            const segRelPath = varDirRel !== '.' ? path.join(varDirRel, segFileName).replace(/\\/g, '/') : segFileName;
+            allFilesToDownload.push({ url: segAbsUrl, localPath: path.join(tempDir, segRelPath) });
+            return `URI="${segFileName}"`;
+          });
+          newVarLines.push(line);
+        } else if (line.startsWith('#EXT-X-KEY:') && line.includes('URI="')) {
+          line = line.replace(/URI="([^"]+)"/g, (match, uri) => {
+            const segAbsUrl = new URL(uri, varBaseUrl).href;
+            let segFileName = path.basename(new URL(segAbsUrl).pathname);
+            const segRelPath = varDirRel !== '.' ? path.join(varDirRel, segFileName).replace(/\\/g, '/') : segFileName;
+            allFilesToDownload.push({ url: segAbsUrl, localPath: path.join(tempDir, segRelPath) });
+            return `URI="${segFileName}"`;
+          });
+          newVarLines.push(line);
+        } else if (line.startsWith('#')) {
+          newVarLines.push(line);
+        } else {
+          const segAbsUrl = new URL(line, varBaseUrl).href;
+          let segFileName = path.basename(new URL(segAbsUrl).pathname);
+          if (!segFileName || segFileName.indexOf('.') === -1) {
+            segFileName = `segment_${allFilesToDownload.length}.ts`;
+          }
+          const segRelPath = varDirRel !== '.' ? path.join(varDirRel, segFileName).replace(/\\/g, '/') : segFileName;
+          allFilesToDownload.push({ url: segAbsUrl, localPath: path.join(tempDir, segRelPath) });
+          newVarLines.push(segFileName);
+        }
+      }
+
+      const localVarPlaylistPath = path.join(tempDir, item.relPath);
+      playlistsToSave.push({
+        localPath: localVarPlaylistPath,
+        content: newVarLines.join('\n')
+      });
+    }
+
+    for (const pl of playlistsToSave) {
+      fs.mkdirSync(path.dirname(pl.localPath), { recursive: true });
+      fs.writeFileSync(pl.localPath, pl.content, 'utf-8');
+    }
+
+    if (cancelRef.isCancelled) {
+      cleanUpTempDir(tempDir);
+      mainWindow.webContents.send('m3u8:cancelled');
+      return;
+    }
+
+    const uniqueSegmentMap = new Map();
+    for (const seg of allFilesToDownload) {
+      if (!uniqueSegmentMap.has(seg.localPath)) {
+        uniqueSegmentMap.set(seg.localPath, seg.url);
+      }
+    }
+
+    const uniqueSegments = Array.from(uniqueSegmentMap.entries()).map(([localPath, url]) => ({ localPath, url }));
+    const totalFilesToDownload = uniqueSegments.length;
+
+    sendStatus(`Початок завантаження ${totalFilesToDownload} сегментів HLS...`);
+
+    let downloadedCount = 0;
+    const DOWNLOAD_CONCURRENCY = 8;
+    const downloadQueue = [...uniqueSegments];
+
+    const downloadWorker = async () => {
+      while (downloadQueue.length > 0) {
+        if (cancelRef.isCancelled) throw new Error('PROCESS_CANCELLED');
+        const item = downloadQueue.shift();
+        if (!item) break;
+
+        try {
+          fs.mkdirSync(path.dirname(item.localPath), { recursive: true });
+          const buf = await httpDownloadUrl(item.url);
+          fs.writeFileSync(item.localPath, buf);
+        } catch (downloadErr) {
+          console.warn(`Warning downloading segment ${item.url}:`, downloadErr.message);
+        }
+
+        downloadedCount++;
+        const pct = totalFilesToDownload > 0 ? Math.round((downloadedCount / totalFilesToDownload) * 50) : 50;
+        updateDockProgressBar(pct, 0);
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('m3u8:progress', {
+            percent: pct,
+            details: `Завантажено сегментів: ${downloadedCount} / ${totalFilesToDownload}`
+          });
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(DOWNLOAD_CONCURRENCY, downloadQueue.length || 1) }, downloadWorker));
+
+    if (cancelRef.isCancelled) {
+      cleanUpTempDir(tempDir);
+      clearDockProgressBar();
+      mainWindow.webContents.send('m3u8:cancelled');
+      return;
+    }
+
+    sendStatus('Ініціалізація вивантаження в Cloudflare R2...');
+
+    const s3Client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${r2Settings.accountId.trim()}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: r2Settings.accessKeyId.trim(),
+        secretAccessKey: r2Settings.secretAccessKey.trim()
+      }
+    });
+
+    const allLocalFiles = getAllFilesRecursive(tempDir);
+    const totalUploadFiles = allLocalFiles.length;
+    let uploadedCount = 0;
+
+    const UPLOAD_CONCURRENCY = 6;
+    const uploadQueue = [...allLocalFiles];
+
+    const uploadWorker = async () => {
+      while (uploadQueue.length > 0) {
+        if (cancelRef.isCancelled) throw new Error('PROCESS_CANCELLED');
+        const filePath = uploadQueue.shift();
+        if (!filePath) break;
+
+        const relativePath = path.relative(tempDir, filePath).replace(/\\/g, '/');
+        const s3Key = `${targetFolder}/${relativePath}`;
+
+        let contentType = mime.lookup(filePath) || 'application/octet-stream';
+        if (filePath.endsWith('.m3u8')) {
+          contentType = 'application/vnd.apple.mpegurl';
+        } else if (filePath.endsWith('.ts')) {
+          contentType = 'video/MP2T';
+        } else if (filePath.endsWith('.m4s')) {
+          contentType = 'video/iso.segment';
+        }
+
+        const cacheControl = filePath.endsWith('.m3u8')
+          ? 'no-cache, no-store, must-revalidate'
+          : 'public, max-age=31536000, immutable';
+
+        const fileBuffer = fs.readFileSync(filePath);
+
+        const command = new PutObjectCommand({
+          Bucket: r2Settings.bucketName.trim(),
+          Key: s3Key,
+          Body: fileBuffer,
+          ContentType: contentType,
+          CacheControl: cacheControl
+        });
+
+        let attempts = 0;
+        while (attempts < 3) {
+          if (cancelRef.isCancelled) throw new Error('PROCESS_CANCELLED');
+          attempts++;
+          try {
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('NETWORK_TIMEOUT')), 15000)
+            );
+            await Promise.race([s3Client.send(command), timeoutPromise]);
+            break;
+          } catch (err) {
+            if (cancelRef.isCancelled || err.message === 'PROCESS_CANCELLED') throw err;
+            if (attempts >= 3) {
+              console.warn(`M3U8 file upload skipped after 3 attempts: ${s3Key}`, err);
+            } else {
+              await new Promise(res => setTimeout(res, 1000 * attempts));
+            }
+          }
+        }
+
+        uploadedCount++;
+        const pct = 50 + (totalUploadFiles > 0 ? Math.round((uploadedCount / totalUploadFiles) * 50) : 50);
+        updateDockProgressBar(50, pct - 50);
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('m3u8:progress', {
+            percent: pct,
+            details: `Вивантажено в CDN: ${uploadedCount} / ${totalUploadFiles} файлів`
+          });
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, uploadQueue.length || 1) }, uploadWorker));
+
+    if (cancelRef.isCancelled) {
+      cleanUpTempDir(tempDir);
+      clearDockProgressBar();
+      mainWindow.webContents.send('m3u8:cancelled');
+      return;
+    }
+
+    if (!keepLocal) {
+      cleanUpTempDir(tempDir);
+    }
+
+    let domain = r2Settings.publicDomain.trim().replace(/\/+$/, '');
+    if (!domain.startsWith('http://') && !domain.startsWith('https://')) {
+      domain = `https://${domain}`;
+    }
+
+    const masterUrl = `${domain}/${targetFolder}/${masterFileName}`;
+
+    sendStatus('Завершено!', 'Усі файли M3U8 успішно скопійовано та завантажено в R2 CDN.');
+    clearDockProgressBar();
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('m3u8:complete', {
+        masterUrl,
+        folderName: targetFolder,
+        totalFiles: totalUploadFiles
+      });
+    }
+
+  } catch (err) {
+    cleanUpTempDir(tempDir);
+    clearDockProgressBar();
+    if (err.message === 'PROCESS_CANCELLED' || cancelRef.isCancelled) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('m3u8:cancelled');
+      }
+    } else {
+      console.error('M3U8 copy error:', err);
+      sendError(err.message || 'Сталася невідома помилка під час копіювання M3U8.');
+    }
+  }
+});
+
 // --- Helpers ---
 function getVideoMetadata(inputPath) {
   return new Promise((resolve) => {

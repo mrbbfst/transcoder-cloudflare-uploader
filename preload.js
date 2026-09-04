@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('api', {
   getVideoResolution: (filePath) => ipcRenderer.invoke('video:getResolution', filePath),
   startProcessing: (data) => ipcRenderer.send('process:start', data),
   stopProcessing: () => ipcRenderer.send('process:stop'),
+  startM3u8Copy: (data) => ipcRenderer.send('m3u8:startCopy', data),
+  stopM3u8Copy: () => ipcRenderer.send('m3u8:stopCopy'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   getFFmpegStatus: () => ipcRenderer.invoke('ffmpeg:getStatus'),
@@ -69,5 +71,31 @@ contextBridge.exposeInMainWorld('api', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('process:complete', subscription);
     return () => ipcRenderer.removeListener('process:complete', subscription);
+  },
+
+  onM3u8Progress: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('m3u8:progress', subscription);
+    return () => ipcRenderer.removeListener('m3u8:progress', subscription);
+  },
+  onM3u8Status: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('m3u8:status', subscription);
+    return () => ipcRenderer.removeListener('m3u8:status', subscription);
+  },
+  onM3u8Complete: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('m3u8:complete', subscription);
+    return () => ipcRenderer.removeListener('m3u8:complete', subscription);
+  },
+  onM3u8Error: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('m3u8:error', subscription);
+    return () => ipcRenderer.removeListener('m3u8:error', subscription);
+  },
+  onM3u8Cancelled: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('m3u8:cancelled', subscription);
+    return () => ipcRenderer.removeListener('m3u8:cancelled', subscription);
   }
 });

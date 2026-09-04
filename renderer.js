@@ -32,10 +32,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Navigation elements
   const navTranscodeBtn = document.getElementById('nav-transcode-btn');
+  const navM3u8Btn = document.getElementById('nav-m3u8-btn');
   const navExplorerBtn = document.getElementById('nav-explorer-btn');
   const navSettingsBtn = document.getElementById('nav-settings-btn');
   const navHelpBtn = document.getElementById('nav-help-btn');
   const viewTranscode = document.getElementById('view-transcode');
+  const viewM3u8 = document.getElementById('view-m3u8');
   const viewExplorer = document.getElementById('view-explorer');
   const viewSettings = document.getElementById('view-settings');
   const viewHelp = document.getElementById('view-help');
@@ -59,11 +61,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- Tab Navigation ---
   function setActiveTab(tab) {
     navTranscodeBtn.classList.toggle('active', tab === 'transcode');
+    if (navM3u8Btn) navM3u8Btn.classList.toggle('active', tab === 'm3u8');
     navExplorerBtn.classList.toggle('active', tab === 'explorer');
     navSettingsBtn.classList.toggle('active', tab === 'settings');
     if (navHelpBtn) navHelpBtn.classList.toggle('active', tab === 'help');
 
     viewTranscode.classList.toggle('hidden', tab !== 'transcode');
+    if (viewM3u8) viewM3u8.classList.toggle('hidden', tab !== 'm3u8');
     viewExplorer.classList.toggle('hidden', tab !== 'explorer');
     viewSettings.classList.toggle('hidden', tab !== 'settings');
     if (viewHelp) viewHelp.classList.toggle('hidden', tab !== 'help');
@@ -76,6 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   navTranscodeBtn.addEventListener('click', () => setActiveTab('transcode'));
+  if (navM3u8Btn) navM3u8Btn.addEventListener('click', () => setActiveTab('m3u8'));
   navExplorerBtn.addEventListener('click', () => setActiveTab('explorer'));
   navSettingsBtn.addEventListener('click', () => setActiveTab('settings'));
   if (navHelpBtn) navHelpBtn.addEventListener('click', () => setActiveTab('help'));
@@ -1513,6 +1518,124 @@ document.addEventListener('DOMContentLoaded', async () => {
         copyUrlBtn.textContent = originalText;
       }, 2000);
     }
+  });
+
+  // --- M3U8 Copier Tab Logic ---
+  const m3u8UrlInput = document.getElementById('m3u8-url-input');
+  const m3u8FolderNameInput = document.getElementById('m3u8-folder-name-input');
+  const m3u8RandomSuffixCheck = document.getElementById('m3u8-random-suffix-check');
+  const m3u8KeepLocalCheck = document.getElementById('m3u8-keep-local-check');
+  const m3u8StartBtn = document.getElementById('m3u8-start-btn');
+  const m3u8CancelBtn = document.getElementById('m3u8-cancel-btn');
+  const m3u8ProgressCard = document.getElementById('m3u8-progress-card');
+  const m3u8StatusTitle = document.getElementById('m3u8-status-title');
+  const m3u8StatusDetail = document.getElementById('m3u8-status-detail');
+  const m3u8ProgressPct = document.getElementById('m3u8-progress-pct');
+  const m3u8ProgressBar = document.getElementById('m3u8-progress-bar');
+  const m3u8ResultCard = document.getElementById('m3u8-result-card');
+  const m3u8MasterUrlInput = document.getElementById('m3u8-master-url-input');
+  const m3u8CopyUrlBtn = document.getElementById('m3u8-copy-url-btn');
+
+  function setM3u8ProcessingState(isProcessing) {
+    if (m3u8StartBtn) m3u8StartBtn.classList.toggle('hidden', isProcessing);
+    if (m3u8CancelBtn) m3u8CancelBtn.classList.toggle('hidden', !isProcessing);
+    if (m3u8UrlInput) m3u8UrlInput.disabled = isProcessing;
+    if (m3u8FolderNameInput) m3u8FolderNameInput.disabled = isProcessing;
+    if (m3u8RandomSuffixCheck) m3u8RandomSuffixCheck.disabled = isProcessing;
+    if (m3u8KeepLocalCheck) m3u8KeepLocalCheck.disabled = isProcessing;
+  }
+
+  if (m3u8StartBtn) {
+    m3u8StartBtn.addEventListener('click', async () => {
+      const url = m3u8UrlInput ? m3u8UrlInput.value.trim() : '';
+      if (!url) {
+        alert('Будь ласка, вкажіть M3U8 посилання!');
+        return;
+      }
+
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        alert('Посилання має починатися з http:// або https://');
+        return;
+      }
+
+      const settings = await window.api.getSettings();
+      if (!settings || !settings.r2 || !settings.r2.accountId || !settings.r2.bucketName) {
+        alert('Будь ласка, спочатку заповніть налаштування Cloudflare R2 на вкладці "Налаштування"!');
+        setActiveTab('settings');
+        return;
+      }
+
+      if (m3u8ResultCard) m3u8ResultCard.classList.add('hidden');
+      if (m3u8ProgressCard) m3u8ProgressCard.classList.remove('hidden');
+      if (m3u8StatusTitle) m3u8StatusTitle.textContent = 'Ініціалізація завантаження...';
+      if (m3u8StatusDetail) m3u8StatusDetail.textContent = '';
+      if (m3u8ProgressPct) m3u8ProgressPct.textContent = '0%';
+      if (m3u8ProgressBar) m3u8ProgressBar.style.width = '0%';
+
+      setM3u8ProcessingState(true);
+
+      window.api.startM3u8Copy({
+        m3u8Url: url,
+        folderName: m3u8FolderNameInput ? m3u8FolderNameInput.value.trim() : '',
+        addRandomSuffix: m3u8RandomSuffixCheck ? m3u8RandomSuffixCheck.checked : true,
+        keepLocal: m3u8KeepLocalCheck ? m3u8KeepLocalCheck.checked : false,
+        r2Settings: settings.r2
+      });
+    });
+  }
+
+  if (m3u8CancelBtn) {
+    m3u8CancelBtn.addEventListener('click', () => {
+      window.api.stopM3u8Copy();
+    });
+  }
+
+  if (m3u8CopyUrlBtn && m3u8MasterUrlInput) {
+    m3u8CopyUrlBtn.addEventListener('click', () => {
+      if (m3u8MasterUrlInput.value) {
+        navigator.clipboard.writeText(m3u8MasterUrlInput.value);
+        const originalText = m3u8CopyUrlBtn.textContent;
+        m3u8CopyUrlBtn.textContent = '✓ Скопійовано!';
+        setTimeout(() => {
+          m3u8CopyUrlBtn.textContent = originalText;
+        }, 2000);
+      }
+    });
+  }
+
+  window.api.onM3u8Status(({ status, details }) => {
+    if (m3u8StatusTitle) m3u8StatusTitle.textContent = status || '';
+    if (m3u8StatusDetail) m3u8StatusDetail.textContent = details || '';
+  });
+
+  window.api.onM3u8Progress(({ percent, details }) => {
+    const pct = Math.max(0, Math.min(100, percent || 0));
+    if (m3u8ProgressPct) m3u8ProgressPct.textContent = `${pct}%`;
+    if (m3u8ProgressBar) m3u8ProgressBar.style.width = `${pct}%`;
+    if (details && m3u8StatusDetail) m3u8StatusDetail.textContent = details;
+  });
+
+  window.api.onM3u8Complete(({ masterUrl, folderName, totalFiles }) => {
+    if (m3u8StatusTitle) m3u8StatusTitle.textContent = 'Успішно завершено!';
+    if (m3u8StatusDetail) m3u8StatusDetail.textContent = `Завантажено ${totalFiles} файлів у папку ${folderName}`;
+    if (m3u8ProgressPct) m3u8ProgressPct.textContent = '100%';
+    if (m3u8ProgressBar) m3u8ProgressBar.style.width = '100%';
+    if (m3u8MasterUrlInput) m3u8MasterUrlInput.value = masterUrl;
+    if (m3u8ResultCard) m3u8ResultCard.classList.remove('hidden');
+    setM3u8ProcessingState(false);
+  });
+
+  window.api.onM3u8Cancelled(() => {
+    if (m3u8StatusTitle) m3u8StatusTitle.textContent = '⏹️ Процес копіювання скасовано.';
+    if (m3u8StatusDetail) m3u8StatusDetail.textContent = '';
+    setM3u8ProcessingState(false);
+  });
+
+  window.api.onM3u8Error(({ error }) => {
+    if (m3u8StatusTitle) m3u8StatusTitle.textContent = 'Помилка копіювання';
+    if (m3u8StatusDetail) m3u8StatusDetail.textContent = error || '';
+    alert(`Помилка копіювання M3U8:\n${error}`);
+    setM3u8ProcessingState(false);
   });
 
   // Helper bytes formatter

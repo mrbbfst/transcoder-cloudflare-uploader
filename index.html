@@ -24,6 +24,13 @@
         </svg>
         <span>Транскодер</span>
       </button>
+      <button id="nav-m3u8-btn" class="nav-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        <span>Копіювання M3U8</span>
+      </button>
       <button id="nav-explorer-btn" class="nav-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -269,6 +276,99 @@
         <div class="url-copy-box">
           <input type="text" id="master-url-input" readonly />
           <button id="copy-url-btn" class="btn-success" style="display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>Копіювати</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- View: M3U8 Copier -->
+    <div id="view-m3u8" class="view-panel hidden">
+      <div class="card options-card">
+        <h3 style="display: flex; align-items: center; gap: 8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span>Швидке копіювання M3U8 плейліста</span>
+        </h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+          Введіть посилання на сторонній M3U8 HLS плейліст (Master або Variant). Додаток завантажить всі наявні якості та сегменти і вивантажить їх у ваш Cloudflare R2 бакет без транскодування.
+        </p>
+
+        <div class="form-group">
+          <label for="m3u8-url-input">Посилання на M3U8 плейліст:</label>
+          <input type="url" id="m3u8-url-input" placeholder="https://vz-d8be5a9f-866.b-cdn.net/1a1d3034-cbaf-4601-99ae-2d63fd5b93a1/playlist.m3u8" style="width: 100%; font-family: monospace;" />
+        </div>
+
+        <div class="form-group">
+          <label for="m3u8-folder-name-input">Назва папки на R2 CDN (необов'язково)</label>
+          <input type="text" id="m3u8-folder-name-input" placeholder="наприклад: copied-stream-1 (за замовчуванням автоматична)" />
+        </div>
+
+        <div class="form-group row-check">
+          <label class="checkbox-label">
+            <input type="checkbox" id="m3u8-random-suffix-check" checked />
+            <span class="custom-checkbox"></span>
+            <span style="display: inline-flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Додавати криптостійкий суфікс до назви папки (захист від перебору URL)
+            </span>
+          </label>
+        </div>
+
+        <div class="form-group row-check">
+          <label class="checkbox-label">
+            <input type="checkbox" id="m3u8-keep-local-check" />
+            <span class="custom-checkbox"></span>
+            <span>Зберігати локальні HLS файли після завантаження</span>
+          </label>
+        </div>
+
+        <div class="actions-row">
+          <button id="m3u8-start-btn" class="btn-primary btn-lg" style="display: inline-flex; align-items: center; gap: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            </svg>
+            <span>Почати копіювання M3U8</span>
+          </button>
+          <button id="m3u8-cancel-btn" class="btn-danger btn-lg hidden">Скасувати</button>
+        </div>
+      </div>
+
+      <!-- Status & Progress Card -->
+      <div id="m3u8-progress-card" class="card progress-card hidden">
+        <div class="progress-header">
+          <span class="status-title" id="m3u8-status-title">Підготовка до завантаження...</span>
+          <span class="status-detail" id="m3u8-status-detail"></span>
+        </div>
+
+        <div class="progress-section">
+          <div class="progress-label">
+            <span>Прогрес обробки та вивантаження</span>
+            <span id="m3u8-progress-pct">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="m3u8-progress-bar" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result Card -->
+      <div id="m3u8-result-card" class="card result-card hidden">
+        <div class="result-badge" style="display: inline-flex; align-items: center; gap: 6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span>M3U8 плейліст успішно скопійовано у ваш Cloudflare CDN!</span>
+        </div>
+        <h3>Головне HLS посилання (Master Playlist)</h3>
+        <p class="result-desc">Використовуйте це посилання для вашого медіаплеєра:</p>
+
+        <div class="url-copy-box">
+          <input type="text" id="m3u8-master-url-input" readonly />
+          <button id="m3u8-copy-url-btn" class="btn-success" style="display: inline-flex; align-items: center; gap: 6px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             <span>Копіювати</span>
           </button>
