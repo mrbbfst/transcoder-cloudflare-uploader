@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   stopM3u8Copy: () => ipcRenderer.send('m3u8:stopCopy'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  testNotification: () => ipcRenderer.invoke('settings:testNotification'),
   getFFmpegStatus: () => ipcRenderer.invoke('ffmpeg:getStatus'),
   testR2Settings: (settings) => ipcRenderer.invoke('settings:testR2', settings),
   listR2Objects: (prefix) => ipcRenderer.invoke('r2:listObjects', prefix),

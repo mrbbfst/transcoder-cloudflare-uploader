@@ -837,9 +837,64 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const ffmpegStatusBox = document.getElementById('ffmpeg-status-box');
 
-  // Auto Updater Elements
+  // Auto Updater & Settings Elements
   const autoUpdateCheck = document.getElementById('auto-update-check');
+  const enableNotificationsCheck = document.getElementById('enable-notifications-check');
+  const testNotificationBtn = document.getElementById('test-notification-btn');
+  const testNotificationStatus = document.getElementById('test-notification-status');
   const checkUpdatesBtn = document.getElementById('check-updates-btn');
+
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+
+  function playCompletionSound() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const notes = [523.25, 659.25, 783.99];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.12, now + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.4);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.08);
+        osc.stop(now + idx * 0.08 + 0.4);
+      });
+    } catch (e) {}
+  }
+
+  function showRendererNotification(title, body) {
+    playCompletionSound();
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      try {
+        new Notification(title, { body });
+      } catch (e) {}
+    }
+  }
+
+  if (testNotificationBtn) {
+    testNotificationBtn.addEventListener('click', async () => {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        try {
+          await Notification.requestPermission();
+        } catch (e) {}
+      }
+      if (testNotificationStatus) testNotificationStatus.textContent = 'Надсилання...';
+      playCompletionSound();
+      await window.api.testNotification();
+      if (testNotificationStatus) {
+        testNotificationStatus.textContent = 'Сповіщення надіслано!';
+        setTimeout(() => { testNotificationStatus.textContent = ''; }, 3000);
+      }
+    });
+  }
   const updateCheckStatus = document.getElementById('update-check-status');
 
   const updateModal = document.getElementById('update-modal');
@@ -986,6 +1041,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         autoUpdateCheck.checked = !settings.disableAutoUpdate;
       }
 
+      if (enableNotificationsCheck) {
+        enableNotificationsCheck.checked = settings.enableNotifications !== false;
+      }
+
       if (proxyUrlInput) proxyUrlInput.value = settings.proxyUrl || 'http://localhost:3000';
       if (settings.tgAuthToken) {
         tgAuthToken = settings.tgAuthToken;
@@ -1030,7 +1089,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       bucketName: r2BucketName ? r2BucketName.value.trim() : '',
       publicDomain: r2PublicDomain ? r2PublicDomain.value.trim() : '',
       proxyUrl: DEFAULT_PROXY_URL,
-      tgAuthToken
+      tgAuthToken,
+      enableNotifications: enableNotificationsCheck ? enableNotificationsCheck.checked : true
     };
 
     const res = await window.api.saveSettings(settings);
@@ -1473,6 +1533,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   window.api.onComplete(({ masterUrl, folderName, totalFiles }) => {
+    showRendererNotification('Транскодування завершено 🚀', `Папку "${folderName}" успішно оброблено (${totalFiles} файлів).`);
     statusSpinner.classList.add('hidden');
     statusText.textContent = `Готово! Успішно завантажено ${totalFiles} файлів.`;
     transcodeBar.style.width = '100%';
@@ -1618,6 +1679,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   window.api.onM3u8Complete(({ masterUrl, folderName, totalFiles }) => {
+    showRendererNotification('Копіювання з посилання завершено 🚀', `Папку "${folderName}" успішно скопійовано (${totalFiles} файлів).`);
     if (m3u8StatusTitle) m3u8StatusTitle.textContent = 'Успішно завершено!';
     if (m3u8StatusDetail) m3u8StatusDetail.textContent = `Завантажено ${totalFiles} файлів у папку ${folderName}`;
     if (m3u8ProgressPct) m3u8ProgressPct.textContent = '100%';

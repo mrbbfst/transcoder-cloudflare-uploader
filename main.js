@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -77,6 +77,9 @@ function configureFFmpegPaths() {
 const activeFFmpegStatus = configureFFmpegPaths();
 
 app.setName('HLS Transcoder R2');
+if (process.platform === 'win32' || process.platform === 'darwin') {
+  app.setAppUserModelId('com.transcoder.uploader');
+}
 
 function getSettingsFilePath() {
   const primaryPath = path.join(app.getPath('userData'), 'r2-settings.json');
@@ -106,9 +109,9 @@ const QUALITY_PRESETS = {
 function createWindow() {
   const iconPath = path.join(__dirname, 'build', 'icon.png');
   mainWindow = new BrowserWindow({
-    width: 1100,
+    width: 1250,
     height: 720,
-    minWidth: 1100,
+    minWidth: 1250,
     minHeight: 600,
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     titleBarStyle: 'hidden',
@@ -375,6 +378,14 @@ ipcMain.handle('settings:save', (event, settings) => {
     console.error('Error saving settings:', err);
     return { success: false, error: err.message };
   }
+});
+
+ipcMain.handle('settings:testNotification', () => {
+  showSystemNotification(
+    'Тестове сповіщення 🔔',
+    'Якщо ви бачите це сповіщення, системні сповіщення налаштовані правильно!'
+  );
+  return { success: true };
 });
 
 ipcMain.handle('settings:testR2', async (event, settings) => {
@@ -797,6 +808,59 @@ function clearDockProgressBar() {
   }
 }
 
+const activeNotifications = new Set();
+
+function showSystemNotification(title, body) {
+  try {
+    let settings = {};
+    if (fs.existsSync(settingsPath)) {
+      try {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      } catch (e) {}
+    }
+    if (settings.enableNotifications === false) {
+      return;
+    }
+
+    if (process.platform === 'darwin' && app.dock) {
+      app.dock.bounce('informational');
+    }
+
+    if (Notification.isSupported()) {
+      const iconPath = path.join(__dirname, 'build', 'icon.png');
+      const notification = new Notification({
+        title,
+        body,
+        icon: fs.existsSync(iconPath) ? iconPath : undefined,
+        silent: false
+      });
+
+      activeNotifications.add(notification);
+
+      notification.on('click', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.focus();
+        }
+        activeNotifications.delete(notification);
+      });
+
+      notification.on('close', () => {
+        activeNotifications.delete(notification);
+      });
+
+      notification.on('failed', (event, error) => {
+        console.error('Notification failed to show:', error);
+        activeNotifications.delete(notification);
+      });
+
+      notification.show();
+    }
+  } catch (err) {
+    console.error('Error showing system notification:', err);
+  }
+}
+
 ipcMain.on('process:start', async (event, data) => {
   const { inputPath, durationSec: inputDurationSec, folderName, selectedQualities, r2Settings, keepLocal, addRandomSuffix, transcodeMode, cloudSettings } = data;
   const tempDir = path.join(os.tmpdir(), `transcoder-${Date.now()}`);
@@ -986,6 +1050,10 @@ ipcMain.on('process:start', async (event, data) => {
 
       sendStatus('Завершено!', 'Всі файли успішно транскодовано та завантажено на GPU.');
       clearDockProgressBar();
+      showSystemNotification(
+        'Транскодування завершено 🚀',
+        `Папку "${targetFolder}" успішно транскодовано та завантажено (Cloud GPU).`
+      );
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('process:complete', {
           masterUrl,
@@ -996,6 +1064,10 @@ ipcMain.on('process:start', async (event, data) => {
       return;
     } catch (err) {
       sendError(err.message);
+      showSystemNotification(
+        'Помилка транскодування ❌',
+        err.message || 'Сталася помилка під час обробки.'
+      );
       return;
     }
   }
@@ -1234,6 +1306,10 @@ ipcMain.on('process:start', async (event, data) => {
 
     sendStatus('Завершено!', 'Всі файли успішно транскодовано та завантажено.');
     clearDockProgressBar();
+    showSystemNotification(
+      'Транскодування завершено 🚀',
+      `Папку "${targetFolder}" успішно транскодовано та завантажено.`
+    );
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('process:complete', {
         masterUrl,
@@ -1252,6 +1328,10 @@ ipcMain.on('process:start', async (event, data) => {
     } else {
       console.error('Process error:', err);
       sendError(err.message || 'Сталася невідома помилка під час обробки.');
+      showSystemNotification(
+        'Помилка транскодування ❌',
+        err.message || 'Сталася невідома помилка під час обробки.'
+      );
     }
   } finally {
     currentFfmpegCommand = null;
@@ -1644,6 +1724,10 @@ ipcMain.on('m3u8:startCopy', async (event, data) => {
 
     sendStatus('Завершено!', 'Усі файли M3U8 успішно скопійовано та завантажено в R2 CDN.');
     clearDockProgressBar();
+    showSystemNotification(
+      'Копіювання з посилання завершено 🚀',
+      `Папку "${targetFolder}" успішно скопійовано з посилання та завантажено в CDN.`
+    );
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('m3u8:complete', {
@@ -1663,6 +1747,10 @@ ipcMain.on('m3u8:startCopy', async (event, data) => {
     } else {
       console.error('M3U8 copy error:', err);
       sendError(err.message || 'Сталася невідома помилка під час копіювання M3U8.');
+      showSystemNotification(
+        'Помилка копіювання ❌',
+        err.message || 'Сталася невідома помилка під час копіювання M3U8.'
+      );
     }
   }
 });
