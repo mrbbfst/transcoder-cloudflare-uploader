@@ -903,6 +903,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const updateNotesBox = document.getElementById('update-notes-box');
   const updateNowBtn = document.getElementById('update-now-btn');
   const updateNowBtnText = document.getElementById('update-now-btn-text');
+  const updateDismissBtn = document.getElementById('update-dismiss-btn');
   const updateSkipBtn = document.getElementById('update-skip-btn');
   const updateNeverBtn = document.getElementById('update-never-btn');
 
@@ -976,6 +977,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     checkUpdatesBtn.addEventListener('click', () => checkForUpdates(true));
   }
 
+  if (updateDismissBtn) {
+    updateDismissBtn.addEventListener('click', () => {
+      if (updateModal) updateModal.classList.add('hidden');
+    });
+  }
+
   if (updateSkipBtn) {
     updateSkipBtn.addEventListener('click', async () => {
       if (pendingUpdateVersion) {
@@ -996,7 +1003,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (updateNowBtn) {
     updateNowBtn.addEventListener('click', async () => {
       if (isUpdateReadyToInstall) {
-        window.api.installUpdate();
+        updateNowBtn.disabled = true;
+        if (updateNowBtnText) updateNowBtnText.textContent = 'Перезапуск...';
+        const res = await window.api.installUpdate();
+        if (res && !res.success) {
+          alert(`Помилка перезапуску:\n${res.error}`);
+          updateNowBtn.disabled = false;
+          if (updateNowBtnText) updateNowBtnText.textContent = 'Перезапустити та встановити';
+        }
       } else {
         updateNowBtn.disabled = true;
         if (updateNowBtnText) updateNowBtnText.textContent = 'Завантаження...';
@@ -1026,6 +1040,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (updateNowBtnText) updateNowBtnText.textContent = 'Перезапустити та встановити';
     if (updateStatusText) updateStatusText.textContent = 'Оновлення завантажено!';
   });
+
+  if (window.api.onUpdateError) {
+    window.api.onUpdateError((errText) => {
+      alert(`Помилка оновлення:\n${errText}`);
+      if (updateNowBtn) updateNowBtn.disabled = false;
+      if (updateNowBtnText) updateNowBtnText.textContent = isUpdateReadyToInstall ? 'Перезапустити та встановити' : 'Оновити зараз';
+    });
+  }
 
   // --- Load Initial Settings ---
   async function loadSettings() {

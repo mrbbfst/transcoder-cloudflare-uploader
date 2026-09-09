@@ -299,7 +299,7 @@
 
         <div class="form-group">
           <label for="m3u8-url-input">Посилання на M3U8 плейліст:</label>
-          <input type="url" id="m3u8-url-input" placeholder="https://vz-d8be5a9f-866.b-cdn.net/1a1d3034-cbaf-4601-99ae-2d63fd5b93a1/playlist.m3u8" style="width: 100%; font-family: monospace;" />
+          <input type="url" id="m3u8-url-input" placeholder="https://example.com/playlist.m3u8" style="width: 100%; font-family: monospace;" />
         </div>
 
         <div class="form-group">
@@ -760,8 +760,9 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           <span id="update-now-btn-text">Оновити зараз</span>
         </button>
-        <div style="display: flex; justify-content: space-between; gap: 8px; margin-top: 4px;">
-          <button id="update-skip-btn" class="btn-secondary btn-sm" style="flex: 1;">Пропустити цей випуск</button>
+        <button id="update-dismiss-btn" class="btn-secondary" style="width: 100%;">Пропустити зараз</button>
+        <div style="display: flex; justify-content: space-between; gap: 8px; margin-top: 2px;">
+          <button id="update-skip-btn" class="btn-secondary btn-sm" style="flex: 1;">Пропустити версію</button>
           <button id="update-never-btn" class="btn-secondary btn-sm" style="flex: 1; color: var(--text-muted);">Ніколи не оновлювати</button>
         </div>
       </div>

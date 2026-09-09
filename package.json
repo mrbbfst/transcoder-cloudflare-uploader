@@ -1,6 +1,6 @@
 {
   "name": "transcoder-uploader",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "description": "Desktop app for video HLS transcoding and Cloudflare R2 uploader",
   "main": "main.js",
   "scripts": {
@@ -39,10 +39,19 @@
     "productName": "HLS Transcoder R2",
     "artifactName": "HLS-Transcoder-R2-${version}-${os}.${ext}",
     "mac": {
-      "artifactName": "HLS-Transcoder-R2-${version}-mac.${ext}"
+      "icon": "build/icon.icns",
+      "category": "public.app-category.video",
+      "target": [
+        "dmg",
+        "zip"
+      ]
     },
     "win": {
-      "artifactName": "HLS-Transcoder-R2-${version}-win.${ext}"
+      "icon": "build/icon.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "nsis": {
       "differentialPackage": false,
@@ -71,21 +80,6 @@
       "build/icon.png",
       "build/icon.icns"
     ],
-    "mac": {
-      "icon": "build/icon.icns",
-      "category": "public.app-category.video",
-      "target": [
-        "dmg",
-        "zip"
-      ]
-    },
-    "win": {
-      "icon": "build/icon.png",
-      "target": [
-        "nsis",
-        "portable"
-      ]
-    },
     "linux": {
       "icon": "build/icon.png",
       "maintainer": "Affi Blog <prog@duck.com>",

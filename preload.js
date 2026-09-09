@@ -37,6 +37,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('updater:downloaded', subscription);
     return () => ipcRenderer.removeListener('updater:downloaded', subscription);
   },
+  onUpdateError: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('updater:error', subscription);
+    return () => ipcRenderer.removeListener('updater:error', subscription);
+  },
   
   onTranscodeProgress: (callback) => {
     const subscription = (event, data) => callback(data);

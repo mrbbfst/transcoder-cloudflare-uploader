@@ -164,6 +164,7 @@ app.on('window-all-closed', () => {
 const { autoUpdater } = require('electron-updater');
 const https = require('https');
 
+autoUpdater.logger = console;
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
@@ -326,12 +327,58 @@ ipcMain.handle('updater:download', async () => {
   }
 });
 
-ipcMain.handle('updater:install', () => {
-  autoUpdater.quitAndInstall();
+ipcMain.handle('updater:install', async () => {
+  try {
+    if (!app.isPackaged) {
+      const ghData = await fetchGitHubLatestRelease();
+      if (ghData && ghData.html_url) {
+        shell.openExternal(ghData.html_url);
+      }
+      return {
+        success: false,
+        error: 'Автоматичне оновлення недоступне в режимі розробки. Відкрито сторінку релізу в браузері.'
+      };
+    }
+
+    // Set fallback timeout in case quitAndInstall fails silently (e.g. macOS unsigned app restriction)
+    setTimeout(async () => {
+      try {
+        const ghData = await fetchGitHubLatestRelease();
+        if (ghData && ghData.html_url) {
+          shell.openExternal(ghData.html_url);
+        }
+      } catch (e) {}
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(
+          'updater:error',
+          'Не вдалося перезапустити додаток автоматично. Відкрито сторінку завантаження релізу в браузері.'
+        );
+      }
+    }, 4000);
+
+    autoUpdater.quitAndInstall(false, true);
+    return { success: true };
+  } catch (err) {
+    console.error('Error in updater:install:', err);
+    try {
+      const ghData = await fetchGitHubLatestRelease();
+      if (ghData && ghData.html_url) {
+        shell.openExternal(ghData.html_url);
+      }
+    } catch (e) {}
+    return { success: false, error: err.message };
+  }
+});
+
+autoUpdater.on('error', (err) => {
+  console.error('autoUpdater error event:', err);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updater:error', err ? (err.message || String(err)) : 'Помилка автооновлення');
+  }
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('updater:downloadProgress', {
       percent: Math.round(progressObj.percent),
       bytesPerSecond: progressObj.bytesPerSecond,
@@ -342,7 +389,7 @@ autoUpdater.on('download-progress', (progressObj) => {
 });
 
 autoUpdater.on('update-downloaded', () => {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('updater:downloaded');
   }
 });
