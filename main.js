@@ -348,12 +348,6 @@ ipcMain.handle('updater:install', async () => {
           shell.openExternal(ghData.html_url);
         }
       } catch (e) {}
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(
-          'updater:error',
-          'Не вдалося перезапустити додаток автоматично. Відкрито сторінку завантаження релізу в браузері.'
-        );
-      }
     }, 4000);
 
     autoUpdater.quitAndInstall(false, true);
@@ -370,10 +364,21 @@ ipcMain.handle('updater:install', async () => {
   }
 });
 
-autoUpdater.on('error', (err) => {
+autoUpdater.on('error', async (err) => {
   console.error('autoUpdater error event:', err);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('updater:error', err ? (err.message || String(err)) : 'Помилка автооновлення');
+  const errMsg = err ? (err.message || String(err)) : '';
+  if (errMsg.includes('Could not get code signature')) {
+    try {
+      const ghData = await fetchGitHubLatestRelease();
+      if (ghData && ghData.html_url) {
+        shell.openExternal(ghData.html_url);
+      }
+    } catch (e) {}
+    // Quietly open release page in browser without showing popup dialog to user
+  } else {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('updater:error', errMsg || 'Помилка автооновлення');
+    }
   }
 });
 
